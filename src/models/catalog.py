@@ -13,14 +13,17 @@ product_category_table = Table('product_category', Base.metadata,
 class Category(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = 'categories'
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(default=True)
     products: Mapped[List["Product"]] = relationship(secondary=product_category_table, back_populates="categories")
 
+
 class Product(Base, TimestampMixin, SoftDeleteMixin):
-    """Produto Pai (Pode representar um modelo geral)"""
+    """Produto Pai """
     __tablename__ = 'products'
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200), unique=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(default=False)
 
