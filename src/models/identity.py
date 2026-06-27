@@ -1,8 +1,8 @@
 from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship, Column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
-from sqlalchemy import DateTime, Boolean
+from sqlalchemy import DateTime
 
 from .base import Base, TimestampMixin, SoftDeleteMixin
 

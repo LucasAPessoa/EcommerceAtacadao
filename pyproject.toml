@@ -16,12 +16,10 @@ dependencies = [
     "pydantic[email]>=2.7.0",     # V2 para validação rigorosa
     "pydantic-settings>=2.2.0",   # Para ler o arquivo .env de forma segura
     "python-multipart>=0.0.9",    # Necessário para receber formulários/arquivos (ex: upload de imagens)
-
     # Banco de Dados e ORM
     "sqlalchemy>=2.0.30",         # Sintaxe 2.0 moderna e tipada
     "alembic>=1.13.1",            # Controle de versão do banco (Migrations)
     "asyncpg>=0.29.0",            # Driver assíncrono nativo para o PostgreSQL voar
-
     # Segurança e Autenticação
     "pyjwt>=2.8.0",               # Geração e validação de tokens JWT
     "passlib[bcrypt]>=1.7.4",     # Hashing de senhas padrão ouro

@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
-from sqlalchemy import String, Float, Integer, ForeignKey, DateTime, Boolean
-from sqlalchemy.orm import Mapped, mapped_column, relationship, Column
+from sqlalchemy import String, Float, Integer, ForeignKey, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 

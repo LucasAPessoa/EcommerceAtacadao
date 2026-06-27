@@ -1,6 +1,6 @@
 from typing import Optional, List
-from sqlalchemy import String, Float, Integer, ForeignKey, Text, Boolean, Table, DateTime
-from sqlalchemy.orm import Mapped, mapped_column, relationship, Column
+from sqlalchemy import String, Float, Integer, ForeignKey, Text,  Table, DateTime, Column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 from .base import Base, TimestampMixin, SoftDeleteMixin

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import AsyncGenerator
-from .config import settings
+from src.core.config import settings
 
 # 1. Criação do Motor (Engine) Assíncrono
 # echo=True faz o SQLAlchemy cuspir os SQLs no terminal (ótimo para debug no ambiente local)
