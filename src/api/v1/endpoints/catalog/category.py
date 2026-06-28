@@ -19,8 +19,6 @@ async def create_category(
     category_in: CategoryCreateSchema,
     service: CategoryService = Depends(get_category_service)
 ):
-    try:
         data = await service.create_category(category_in)
         return BaseResponse[CategoryResponseSchema](data=data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+  

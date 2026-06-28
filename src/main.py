@@ -1,8 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
 from src.core.config import settings
+from fastapi.responses import JSONResponse
 
 from src.api.v1.endpoints.router import router
+
+DATABASE_ERROR_MESSAGES = {
+    "UniqueViolationError": "Já existe um registro com estes dados no sistema.",
+    "ForeignKeyViolationError": "O registro associado não existe ou foi removido.",
+    "NotNullViolationError": "Um campo obrigatório não foi preenchido no banco de dados.",
+    "CheckViolationError": "Os dados fornecidos não atendem às regras de validação do banco."
+}
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -19,6 +28,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==========================================
+# TRATAMENTO DE ERROS GLOBAL (BaseResponse)
+# ==========================================
+
+@app.exception_handler(IntegrityError)
+async def global_error_handler(request: Request, exc: IntegrityError):
+    error_str = str(exc.orig) if exc.orig else str(exc)
+    
+    friendly_message = "Ocorreu um conflito de dados ao tentar salvar."
+    
+    for error_key, message in DATABASE_ERROR_MESSAGES.items():
+        if error_key in error_str:
+            friendly_message = message
+            break 
+
+    return JSONResponse(
+        status_code=409,
+        content={
+            "status": "error",
+            "message": friendly_message,
+            "data": None,
+            "errors": [error_str] 
+        }
+    )
 
 # Health check endpoint
 @app.get("/health", tags=["System"])
