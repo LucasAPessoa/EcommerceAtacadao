@@ -38,3 +38,7 @@ class CategoryService:
         """Atualiza uma categoria existente no banco de dados."""
         data = category_in.model_dump()
         return await self.repository.update(category_id, data)
+
+    async def delete_category(self, category_id: int) -> bool:
+        """Remove uma categoria do banco de dados (soft delete)."""
+        return await self.repository.delete(category_id)

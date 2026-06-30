@@ -50,3 +50,15 @@ async def update_category(
     if not data:
         raise HTTPException(status_code=404, detail="Categoria não encontrada.")
     return BaseResponse[CategoryResponseSchema](data=data)
+
+
+@router.delete("/categories/{category_id}", response_model=BaseResponse[dict], tags=["Categories"])
+async def delete_category(
+    category_id: int,
+    service: CategoryService = Depends(get_category_service)
+):
+
+    success = await service.delete_category(category_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada.")
+    return BaseResponse[dict](data={"message": "Categoria excluída com sucesso"})

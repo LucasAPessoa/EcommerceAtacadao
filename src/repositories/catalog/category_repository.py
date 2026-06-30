@@ -1,5 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from src.schemas.catalog.category_schema import CategoryResponseSchema
 from src.models.catalog import Category
@@ -39,3 +40,14 @@ class CategoryRepository:
         await self.session.refresh(category)
         
         return category
+
+    async def delete(self, category_id: int) -> bool:
+        """Remove uma categoria do banco de dados (soft delete)."""
+        category = await self.session.get(Category, category_id)
+        
+        if not category:
+            return False
+            
+        category.deleted_at = datetime.utcnow()
+        await self.session.commit()
+        return True
