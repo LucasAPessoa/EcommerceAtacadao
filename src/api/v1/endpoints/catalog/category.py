@@ -22,3 +22,31 @@ async def create_category(
         data = await service.create_category(category_in)
         return BaseResponse[CategoryResponseSchema](data=data)
   
+@router.get("/categories", response_model=BaseResponse[list[CategoryResponseSchema]], tags=["Categories"])
+async def list_categories(
+      service: CategoryService = Depends(get_category_service)
+):
+      data = await service.list_categories()
+      return BaseResponse[list[CategoryResponseSchema]](data=data)
+
+
+@router.get("/categories/{category_id}", response_model=BaseResponse[CategoryResponseSchema], tags=["Categories"])
+async def get_category_by_id(
+    category_id: int,
+    service: CategoryService = Depends(get_category_service)
+):
+    data = await service.get_category_by_id(category_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada.")
+    return BaseResponse[CategoryResponseSchema](data=data)
+
+@router.put("/categories/{category_id}", response_model=BaseResponse[CategoryResponseSchema], tags=["Categories"])
+async def update_category(
+    category_id: int,
+    category_in: CategoryBaseSchema,
+    service: CategoryService = Depends(get_category_service)
+):
+    data = await service.update_category(category_id, category_in)
+    if not data:
+        raise HTTPException(status_code=404, detail="Categoria não encontrada.")
+    return BaseResponse[CategoryResponseSchema](data=data)

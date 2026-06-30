@@ -25,3 +25,16 @@ class CategoryService:
         data = category_in.model_dump()
 
         return await self.repository.create(data)
+    
+    async def list_categories(self) -> list[CategoryBaseSchema]:
+        """Lista todas as categorias no banco de dados."""
+        return await self.repository.list()
+
+    async def get_category_by_id(self, category_id: int) -> CategoryBaseSchema:
+        """Obtém uma categoria pelo seu ID."""
+        return await self.repository.get_by_id(category_id)
+    
+    async def update_category(self, category_id: int, category_in: CategoryBaseSchema) -> CategoryBaseSchema:
+        """Atualiza uma categoria existente no banco de dados."""
+        data = category_in.model_dump()
+        return await self.repository.update(category_id, data)
