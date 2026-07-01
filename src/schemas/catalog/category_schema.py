@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 from typing import Optional
 
@@ -5,6 +7,8 @@ class CategoryBaseSchema(BaseModel):
     name: str
     description: Optional[str]
     is_active: Optional[bool] = True
+    created_at: Optional[datetime]
+    deleted_at: Optional[datetime]
 
 class CategoryCreateSchema(CategoryBaseSchema):
     pass

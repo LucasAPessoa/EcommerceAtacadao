@@ -47,6 +47,8 @@ class CategoryRepository:
         
         if not category:
             return False
+        
+        category.is_active = False
             
         category.deleted_at = datetime.utcnow()
         await self.session.commit()
