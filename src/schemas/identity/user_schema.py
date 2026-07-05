@@ -8,16 +8,16 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 class UserBase(BaseModel):
     email: EmailStr
     is_active: bool = True
-    user_type: Literal["individual", "company"] = "individual"
+    user_type: Literal["INDIVIDUAL", "COMPANY", "ADMIN"] = "INDIVIDUAL"
 
     @field_validator("user_type", mode="before")
     @classmethod
     def normalize_user_type(cls, value: str) -> str:
         legacy_mapping = {
-            "client": "individual",
-            "user": "individual",
-            "cpf": "individual",
-            "cnpj": "company",
+            "client": "INDIVIDUAL",
+            "user": "INDIVIDUAL",
+            "cpf": "INDIVIDUAL",
+            "cnpj": "COMPANY",
         }
         if isinstance(value, str):
             return legacy_mapping.get(value, value)
@@ -37,7 +37,9 @@ class UserCreate(UserBase):
             self.cnpj = None
             self.corporate_name = None
             self.ie = None
-            return self
+
+        if not self.cpf:
+            raise ValueError("Individual users must provide cpf")
 
         if not self.corporate_name or not self.cnpj:
             raise ValueError("Company users must provide corporate_name and cnpj")
