@@ -23,7 +23,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     is_active: Mapped[bool] = mapped_column(default=True)
     
     # Enum aplicado para blindar o tipo de usuário
-    user_type: Mapped[UserTypeEnum] = mapped_column(SQLEnum(UserTypeEnum), default=UserTypeEnum.RETAIL)
+    user_type: Mapped[UserTypeEnum] = mapped_column(SQLEnum(UserTypeEnum), default=UserTypeEnum.INDIVIDUAL)
     
     # Índices adicionados para performance de busca
     cpf: Mapped[Optional[str]] = mapped_column(String(11), nullable=True, index=True)

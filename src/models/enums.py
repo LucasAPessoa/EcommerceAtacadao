@@ -1,8 +1,8 @@
 import enum
 
 class UserTypeEnum(str, enum.Enum):
-    RETAIL = "RETAIL"
-    WHOLESALE = "WHOLESALE"
+    INDIVIDUAL = "INDIVIDUAL"
+    COMPANY = "COMPANY"
     ADMIN = "ADMIN"
 
 class OrderStatusEnum(str, enum.Enum):

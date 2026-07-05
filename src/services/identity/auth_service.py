@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import UUID
 
 from src.core.config import settings
 from src.core.sec import (
@@ -10,12 +11,16 @@ from src.core.sec import (
 )
 from src.models.identity import User
 from src.repositories.identity.user_repository import UserRepository
+from src.repositories.identity.refresh_token_repository import RefreshTokenRepository
 from src.schemas.identity.user_schema import Token, UserCreate, UserResponse
 
 
 class AuthService:
-    def __init__(self, user_repository: UserRepository):
+    def __init__(
+        self, user_repository: UserRepository, refresh_token_repository: RefreshTokenRepository
+    ):
         self.user_repository = user_repository
+        self.refresh_token_repository = refresh_token_repository
 
     async def register_user(self, user_in: UserCreate) -> UserResponse:
         existing_user = await self.user_repository.get_by_email(user_in.email)
@@ -64,7 +69,23 @@ class AuthService:
             raise ValueError("Invalid refresh token")
 
         user = await self.user_repository.get_by_email(email)
-        if user is None or not user.is_active:
-            raise ValueError("User not found or inactive")
+        if not user:
+            raise ValueError("Invalid refresh token")
 
+        # Revoke the old refresh token
+        await self.refresh_token_repository.revoke_token(refresh_token)
+
+        # Generate new token pair
         return self.create_token_pair(user)
+
+    async def revoke_refresh_token(self, token: str, user_id: UUID) -> bool:
+        """Revoke a refresh token by its token string, only if it belongs to the given user.
+        Returns True if token was found and revoked, False otherwise.
+        """
+        token_obj = await self.refresh_token_repository.get_by_token(token)
+        if not token_obj:
+            return False
+        if token_obj.user_id != user_id:
+            return False
+        await self.refresh_token_repository.revoke_token(token)
+        return True
