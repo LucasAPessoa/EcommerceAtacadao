@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -59,7 +60,7 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 class UserResponse(UserBase):
-    id: int
+    id: UUID
     full_name: Optional[str] = None
     cpf: Optional[str] = None
     cnpj: Optional[str] = None

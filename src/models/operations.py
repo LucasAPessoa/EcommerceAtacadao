@@ -1,62 +1,65 @@
-from typing import Optional, Dict, Any, TYPE_CHECKING
-from sqlalchemy import String, Float, Integer, ForeignKey, DateTime, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import JSONB
+import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, Optional
+from sqlalchemy import DateTime, Numeric, ForeignKey, Integer, String, Text, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TimestampMixin, SoftDeleteMixin
+from .base import Base, SoftDeleteMixin, TimestampMixin, uuid_primary_key
+from .enums import PaymentMethodEnum, TransactionStatusEnum, RefundStatusEnum, ShipmentStatusEnum
 
 if TYPE_CHECKING:
     from .sales import Order
 
 class Transaction(Base, TimestampMixin):
     __tablename__ = 'transactions'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'))
-    payment_method: Mapped[str] = mapped_column(String(50)) # PIX, CREDIT_CARD
-    gateway_ref_id: Mapped[Optional[str]] = mapped_column(String(100))
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id'))
     
-    amount: Mapped[float] = mapped_column(Float)
+    payment_method: Mapped[PaymentMethodEnum] = mapped_column(SQLEnum(PaymentMethodEnum))
+    gateway_ref_id: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    
+    amount: Mapped[float] = mapped_column(Numeric(10, 2))
     installments: Mapped[int] = mapped_column(Integer, default=1)
-    gateway_fee: Mapped[Optional[float]] = mapped_column(Float)
+    gateway_fee: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
     
-    status: Mapped[str] = mapped_column(String(50))
+    status: Mapped[TransactionStatusEnum] = mapped_column(SQLEnum(TransactionStatusEnum), default=TransactionStatusEnum.PENDING)
     paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     
     order: Mapped["Order"] = relationship(back_populates="transactions")
 
 class Refund(Base, TimestampMixin):
-    """Gestão de Devoluções/Cancelamentos (CDC)"""
     __tablename__ = 'refunds'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'))
-    transaction_id: Mapped[Optional[int]] = mapped_column(ForeignKey('transactions.id'))
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id'))
+    transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('transactions.id'))
     
-    amount_refunded: Mapped[float] = mapped_column(Float)
+    amount_refunded: Mapped[float] = mapped_column(Numeric(10, 2))
     reason: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(50), default="REQUESTED")
+    status: Mapped[RefundStatusEnum] = mapped_column(SQLEnum(RefundStatusEnum), default=RefundStatusEnum.REQUESTED)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     
     order: Mapped["Order"] = relationship(back_populates="refunds")
 
 class LocalCEPRange(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = 'local_cep_ranges'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    cep_start: Mapped[str] = mapped_column(String(10))
-    cep_end: Mapped[str] = mapped_column(String(10))
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    cep_start: Mapped[str] = mapped_column(String(10), index=True)
+    cep_end: Mapped[str] = mapped_column(String(10), index=True)
     neighborhood: Mapped[Optional[str]] = mapped_column(String(100))
-    shipping_rate: Mapped[float] = mapped_column(Float)
+    shipping_rate: Mapped[float] = mapped_column(Numeric(10, 2))
 
 class Shipment(Base, TimestampMixin):
     __tablename__ = 'shipments'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey('orders.id'), unique=True)
-    local_cep_id: Mapped[Optional[int]] = mapped_column(ForeignKey('local_cep_ranges.id'))
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id'), unique=True)
+    local_cep_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey('local_cep_ranges.id'))
     
     provider: Mapped[str] = mapped_column(String(50))
-    tracking_code: Mapped[Optional[str]] = mapped_column(String(100))
-    shipping_cost: Mapped[Optional[float]] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(50), default="PREPARING")
+    tracking_code: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    shipping_cost: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    
+    status: Mapped[ShipmentStatusEnum] = mapped_column(SQLEnum(ShipmentStatusEnum), default=ShipmentStatusEnum.PREPARING)
     
     shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -64,10 +67,9 @@ class Shipment(Base, TimestampMixin):
     order: Mapped["Order"] = relationship(back_populates="shipment")
 
 class ERPWebhookLog(Base, TimestampMixin):
-    """Log otimizado com JSONB para facilitar buscas e rastreabilidade"""
     __tablename__ = 'erp_webhook_logs'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    event_type: Mapped[str] = mapped_column(String(50))
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    event_type: Mapped[str] = mapped_column(String(50), index=True)
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20))
-    related_sku: Mapped[Optional[str]] = mapped_column(String(100))
+    related_sku: Mapped[Optional[str]] = mapped_column(String(100), index=True)

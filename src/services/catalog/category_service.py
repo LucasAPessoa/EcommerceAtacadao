@@ -1,44 +1,42 @@
-
-
+from uuid import UUID
+from src.models.catalog import Category
 from src.schemas.catalog.category_schema import CategoryCreateSchema, CategoryBaseSchema
-
+from src.repositories.catalog.category_repository import CategoryRepository
 
 class CategoryService: 
-    def __init__(self, repository):
+    def __init__(self, repository: CategoryRepository):
         self.repository = repository
 
-    async def create_category(self, category_in: CategoryCreateSchema) -> CategoryBaseSchema:
-
-        """Cria uma nova categoria no banco de dados."""
-
-        if category_in.name is None or category_in.name.strip() == "":
+    # Retorna o Model SQLAlchemy (Category), não o Schema!
+    async def create_category(self, category_in: CategoryCreateSchema) -> Category:
+        """Cria uma nova categoria no banco de dados com regras de negócio."""
+        
+        if not category_in.name or not category_in.name.strip():
             raise ValueError("O nome da categoria não pode ser vazio.")
         
-        if category_in.description.__len__() > 100:
+        if category_in.description and len(category_in.description) > 100:
             raise ValueError("A descrição da categoria não pode exceder 100 caracteres.")
 
         if category_in.is_active is False:
             raise ValueError("A categoria deve ser ativa ao ser criada.")
         
-        
-
-        data = category_in.model_dump()
-
+        # exclude_unset=True evita sobrescrever campos acidentalmente com None
+        data = category_in.model_dump(exclude_unset=True) 
         return await self.repository.create(data)
     
-    async def list_categories(self) -> list[CategoryBaseSchema]:
-        """Lista todas as categorias no banco de dados."""
-        return await self.repository.list()
+    async def list_categories(self) -> list[Category]:
+        return await self.repository.get_all()
 
-    async def get_category_by_id(self, category_id: int) -> CategoryBaseSchema:
-        """Obtém uma categoria pelo seu ID."""
+    async def get_category_by_id(self, category_id: UUID) -> Category | None:
         return await self.repository.get_by_id(category_id)
     
-    async def update_category(self, category_id: int, category_in: CategoryBaseSchema) -> CategoryBaseSchema:
-        """Atualiza uma categoria existente no banco de dados."""
-        data = category_in.model_dump()
-        return await self.repository.update(category_id, data)
+    async def update_category(self, category_id: UUID, category_in: CategoryBaseSchema) -> Category | None:
+        category = await self.repository.get_by_id(category_id)
+        if not category:
+            return None
+        
+        data = category_in.model_dump(exclude_unset=True)
+        return await self.repository.update(category, data)
 
-    async def delete_category(self, category_id: int) -> bool:
-        """Remove uma categoria do banco de dados (soft delete)."""
+    async def delete_category(self, category_id: UUID) -> bool:
         return await self.repository.delete(category_id)

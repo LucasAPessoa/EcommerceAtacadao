@@ -1,4 +1,5 @@
 from typing import List, Optional
+from uuid import UUID
 
 from src.repositories.identity.user_repository import UserRepository
 from src.schemas.identity.user_schema import UserResponse
@@ -13,7 +14,7 @@ class UserService:
         users = await self.user_repository.get_multi(skip=skip, limit=limit)
         return [UserResponse.model_validate(user) for user in users]
 
-    async def get_by_id(self, user_id: int) -> Optional[UserResponse]:
+    async def get_by_id(self, user_id: UUID) -> Optional[UserResponse]:
         """Get a single user by ID."""
         user = await self.user_repository.get_by_id(user_id)
         if user is None:

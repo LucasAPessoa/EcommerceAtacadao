@@ -1,23 +1,23 @@
 from datetime import datetime
-
-from pydantic import BaseModel
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 class CategoryBaseSchema(BaseModel):
     name: str
-    description: Optional[str]
-    is_active: Optional[bool] = True
-    created_at: Optional[datetime]
-    deleted_at: Optional[datetime]
+    description: Optional[str] = None
+    is_active: bool = True
 
 class CategoryCreateSchema(CategoryBaseSchema):
     pass
 
 class CategoryUpdateSchema(CategoryBaseSchema):
-    id: int
+    pass # O ID vai na URL, não precisamos dele no corpo do Update
 
 class CategoryResponseSchema(CategoryBaseSchema):
-    id: int
+    id: UUID
+    created_at: datetime
+    # deleted_at geralmente não é devolvido para o front-end
 
-    class Config:
-        from_attributes = True
+    # Sintaxe correta do Pydantic V2 para converter Models SQLAlchemy em JSON
+    model_config = ConfigDict(from_attributes=True)
