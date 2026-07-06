@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
@@ -30,6 +31,15 @@ class UserCreate(UserBase):
     cnpj: Optional[str] = None
     corporate_name: Optional[str] = None
     ie: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        password_pattern = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$")
+        if not password_pattern.match(value):
+            raise ValueError("A senha é muito fraca. Precisa conter maiúsculas, minúsculas, números e caracteres especiais.")
+        return value
+    
 
     @model_validator(mode="after")
     def validate_user_type_fields(self) -> "UserCreate":

@@ -10,6 +10,13 @@ class RefreshTokenRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def create(self, token_data: dict) -> RefreshToken:
+        new_token = RefreshToken(**token_data)
+        self.session.add(new_token)
+        await self.session.commit()
+        await self.session.refresh(new_token)
+        return new_token
+
     async def get_by_token(self, token: str) -> Optional[RefreshToken]:
         result = await self.session.execute(
             select(RefreshToken).where(RefreshToken.token == token)

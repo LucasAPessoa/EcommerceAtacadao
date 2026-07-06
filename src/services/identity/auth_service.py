@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from src.core.config import settings
@@ -31,6 +31,9 @@ class AuthService:
         if default_role is None:
             raise ValueError("Default user role is not configured")
 
+        if len(user_in.password) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+
         hashed_password = get_password_hash(user_in.password)
         user_data = user_in.model_dump(exclude={"password"})
         user_data["password_hash"] = hashed_password
@@ -48,15 +51,31 @@ class AuthService:
             return False
         return user
 
-    def create_token_pair(self, user: User) -> Token:
+    # 1. Transformamos em async
+    async def create_token_pair(self, user: User) -> Token:
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user.email}, expires_delta=access_token_expires
         )
-        refresh_token = create_refresh_token(data={"sub": user.email})
+        
+        # 2. Definimos o tempo do refresh e calculamos a data exata para o banco
+        refresh_expires_delta = timedelta(days=7) # Ajuste para os dias que preferir
+        refresh_token_str = create_refresh_token(
+            data={"sub": user.email}, expires_delta=refresh_expires_delta
+        )
+        expires_at = datetime.utcnow() + refresh_expires_delta
+
+        # 3. Salvamos o token no banco de dados!
+        await self.refresh_token_repository.create({
+            "token": refresh_token_str,
+            "user_id": user.id,
+            "expires_at": expires_at,
+            "revoked": False
+        })
+
         return Token(
             access_token=access_token,
-            refresh_token=refresh_token,
+            refresh_token=refresh_token_str,
             token_type="bearer",
         )
 
@@ -72,16 +91,12 @@ class AuthService:
         if not user:
             raise ValueError("Invalid refresh token")
 
-        # Revoke the old refresh token
         await self.refresh_token_repository.revoke_token(refresh_token)
 
-        # Generate new token pair
-        return self.create_token_pair(user)
+       
+        return await self.create_token_pair(user)
 
     async def revoke_refresh_token(self, token: str, user_id: UUID) -> bool:
-        """Revoke a refresh token by its token string, only if it belongs to the given user.
-        Returns True if token was found and revoked, False otherwise.
-        """
         token_obj = await self.refresh_token_repository.get_by_token(token)
         if not token_obj:
             return False
