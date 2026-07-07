@@ -10,7 +10,6 @@ from src.services.catalog.category_service import CategoryService
 
 router = APIRouter()
 
-# CORREÇÃO: O tipo de retorno aqui é CategoryService!
 def get_category_service(session: AsyncSession = Depends(get_db)) -> CategoryService:
     repository = CategoryRepository(session)
     return CategoryService(repository)
@@ -20,7 +19,6 @@ async def create_category(
     category_in: CategoryCreateSchema,
     service: CategoryService = Depends(get_category_service)
 ):
-    # Se o Service lançar aquele ValueError, o nosso Tratador Global de Erros vai capturar!
     data = await service.create_category(category_in)
     return BaseResponse(status="success", data=data)
   
