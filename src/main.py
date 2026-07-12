@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from src.core.config import settings
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("ecommerce_atacadao")
 
 from src.api.v1.endpoints.router import api_router as router
 
@@ -36,13 +40,17 @@ app.add_middleware(
 @app.exception_handler(IntegrityError)
 async def global_error_handler(request: Request, exc: IntegrityError):
     error_str = str(exc.orig) if exc.orig else str(exc)
-    
+
     friendly_message = "Ocorreu um conflito de dados ao tentar salvar."
-    
+
     for error_key, message in DATABASE_ERROR_MESSAGES.items():
         if error_key in error_str:
             friendly_message = message
-            break 
+            break
+
+    # O erro cru do driver do banco (nomes de tabela/coluna/constraint) fica só no
+    # log do servidor. Nunca deve ir pro cliente, é vazamento de informação interna.
+    logger.warning("IntegrityError em %s: %s", request.url.path, error_str)
 
     return JSONResponse(
         status_code=409,
@@ -50,7 +58,7 @@ async def global_error_handler(request: Request, exc: IntegrityError):
             "status": "error",
             "message": friendly_message,
             "data": None,
-            "errors": [error_str] 
+            "errors": [friendly_message],
         }
     )
 

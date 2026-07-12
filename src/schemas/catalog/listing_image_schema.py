@@ -6,7 +6,7 @@ from src.schemas.base_schema import TimestampMixinSchema
 class ListingImageBaseSchema(BaseModel):
     bling_id: Optional[int] = None
     url: str = Field(..., max_length=500)
-    sort_order: int
+    sort_order: int = Field(..., ge=0)
     image_type: str = Field(..., max_length=50)
 
 class ListingImageCreateSchema(ListingImageBaseSchema):
@@ -15,7 +15,7 @@ class ListingImageCreateSchema(ListingImageBaseSchema):
 class ListingImageUpdateSchema(BaseModel):
     bling_id: Optional[int] = None
     url: Optional[str] = Field(None, max_length=500)
-    sort_order: Optional[int] = None
+    sort_order: Optional[int] = Field(None, ge=0)
     image_type: Optional[str] = Field(None, max_length=50)
 
 class ListingImageResponseSchema(ListingImageBaseSchema, TimestampMixinSchema):

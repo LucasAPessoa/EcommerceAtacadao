@@ -71,3 +71,8 @@ ipython_config.py
 # Operating System files
 .DS_Store
 Thumbs.db
+
+tests
+.patch
+pytest.ini
+requirements-tests.txt

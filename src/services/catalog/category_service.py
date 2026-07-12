@@ -34,13 +34,12 @@ class CategoryService:
             return None
         return CategoryResponseSchema.model_validate(category)
     
-    async def update_category(self, category_id: UUID, category_in: CategoryBaseSchema) -> Category | None:
-        category = await self.repository.get_by_id(category_id)
-        if not category:
-            return None
-        
+    async def update_category(self, category_id: UUID, category_in: CategoryBaseSchema) -> CategoryResponseSchema | None:
         data = category_in.model_dump(exclude_unset=True)
-        return await self.repository.update(category, data)
+        # Bug original: passava o objeto (CategoryResponseSchema) no lugar do id
+        # para repository.update(id, data) — a comparação model.id == <schema> no
+        # WHERE nunca batia, então a atualização sempre falhava silenciosamente.
+        return await self.repository.update(category_id, data)
 
     async def delete_category(self, category_id: UUID) -> bool:
         return await self.repository.delete(category_id)

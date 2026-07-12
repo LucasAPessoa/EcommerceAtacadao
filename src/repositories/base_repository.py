@@ -49,11 +49,12 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
         return [self.response_schema.model_validate(obj) for obj in db_objs]
 
     async def create(self, obj_in: Dict[str, Any]) -> ResponseSchemaType:
-        """Cria, guarda no banco e retorna o Schema preenchido."""
+        """Cria, guarda no banco (commit) e retorna o Schema preenchido."""
         db_obj = self.model(**obj_in)
         self.session.add(db_obj)
-        await self.session.flush() # Dá o flush para gerar o ID/Timestamps no banco
-        
+        await self.session.commit()  # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        await self.session.refresh(db_obj)
+
         return self.response_schema.model_validate(db_obj)
 
     async def update(self, id: uuid.UUID, obj_in: Dict[str, Any]) -> Optional[ResponseSchemaType]:
@@ -74,8 +75,9 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
                 setattr(db_obj, field, value)
         
         self.session.add(db_obj)
-        await self.session.flush()
-        
+        await self.session.commit()  # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        await self.session.refresh(db_obj)
+
         return self.response_schema.model_validate(db_obj)
 
     async def delete(self, id: uuid.UUID) -> bool:
@@ -87,6 +89,7 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
                 .values(deleted_at=datetime.utcnow())
             )
             result = await self.session.execute(query)
+            await self.session.commit()  # o UPDATE do soft delete também precisa ser commitado
             return result.rowcount > 0
         
         raise NotImplementedError("Este modelo não suporta exclusão.")

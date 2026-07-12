@@ -88,13 +88,25 @@ class AuthService:
         if not email:
             raise ValueError("Invalid refresh token")
 
+        # Validação de assinatura/exp do JWT não basta: é preciso checar o estado real
+        # no banco, senão um refresh token revogado (logout, rotação) continua
+        # funcionando normalmente até a expiração natural (7 dias).
+        token_obj = await self.refresh_token_repository.get_by_token(refresh_token)
+        if not token_obj:
+            raise ValueError("Invalid refresh token")
+        if token_obj.revoked:
+            raise ValueError("Refresh token has been revoked")
+        if token_obj.expires_at <= datetime.utcnow():
+            raise ValueError("Refresh token has expired")
+
         user = await self.user_repository.get_by_email(email)
         if not user:
+            raise ValueError("Invalid refresh token")
+        if token_obj.user_id != user.id:
             raise ValueError("Invalid refresh token")
 
         await self.refresh_token_repository.revoke_token(refresh_token)
 
-       
         return await self.create_token_pair(user)
 
     async def revoke_refresh_token(self, token: str, user_id: UUID) -> bool:

@@ -10,14 +10,14 @@ class ProductVariantBaseSchema(BaseModel):
     variation_name: str = Field(..., max_length=100)
     gtin: Optional[str] = Field(None, max_length=50)
     packaging_gtin: Optional[str] = Field(None, max_length=50)
-    base_price: float
-    stock_quantity: int = 0
+    base_price: float = Field(..., ge=0)
+    stock_quantity: int = Field(0, ge=0)
     last_bling_sync: Optional[datetime] = None
     is_active: bool = True
-    weight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    width_cm: Optional[float] = None
-    length_cm: Optional[float] = None
+    weight_kg: Optional[float] = Field(None, ge=0)
+    height_cm: Optional[float] = Field(None, ge=0)
+    width_cm: Optional[float] = Field(None, ge=0)
+    length_cm: Optional[float] = Field(None, ge=0)
 
 class ProductVariantCreateSchema(ProductVariantBaseSchema):
     product_id: UUID
@@ -28,14 +28,14 @@ class ProductVariantUpdateSchema(BaseModel):
     variation_name: Optional[str] = Field(None, max_length=100)
     gtin: Optional[str] = Field(None, max_length=50)
     packaging_gtin: Optional[str] = Field(None, max_length=50)
-    base_price: Optional[float] = None
-    stock_quantity: Optional[int] = None
+    base_price: Optional[float] = Field(None, ge=0)
+    stock_quantity: Optional[int] = Field(None, ge=0)
     last_bling_sync: Optional[datetime] = None
     is_active: Optional[bool] = None
-    weight_kg: Optional[float] = None
-    height_cm: Optional[float] = None
-    width_cm: Optional[float] = None
-    length_cm: Optional[float] = None
+    weight_kg: Optional[float] = Field(None, ge=0)
+    height_cm: Optional[float] = Field(None, ge=0)
+    width_cm: Optional[float] = Field(None, ge=0)
+    length_cm: Optional[float] = Field(None, ge=0)
 
 class ProductVariantResponseSchema(ProductVariantBaseSchema, SoftDeleteMixinSchema):
     id: UUID

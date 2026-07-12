@@ -30,6 +30,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+        except Exception:
+            # Garante rollback explícito de qualquer transação pendente antes de propagar o erro
+            await session.rollback()
+            raise
         finally:
             # Garante que a conexão volta pro pool mesmo se der erro (Exception)
             await session.close()
