@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from src.core.config import settings
 from fastapi.responses import JSONResponse
 
-from src.api.v1.endpoints.router import router
+from src.api.v1.endpoints.router import api_router as router
 
 DATABASE_ERROR_MESSAGES = {
     "UniqueViolationError": "Já existe um registro com estes dados no sistema.",

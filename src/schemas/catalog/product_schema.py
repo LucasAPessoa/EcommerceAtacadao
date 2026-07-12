@@ -1,11 +1,8 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
-from datetime import datetime
+from src.schemas.base_schema import SoftDeleteMixinSchema
 
-# ==========================================
-# Schema Base: Campos comunes a todas las operaciones
-# ==========================================
 class ProductBaseSchema(BaseModel):
     bling_id: Optional[int] = None
     name: str = Field(..., max_length=200, description="Nome do produto")
@@ -28,21 +25,12 @@ class ProductBaseSchema(BaseModel):
     media_raw: Optional[Dict[str, Any]] = None
     custom_fields: Optional[List[Dict[str, Any]]] = None
 
-# ==========================================
-# Schema Create: Usado no POST
-# ==========================================
 class ProductCreateSchema(ProductBaseSchema):
-    # O 'name' já é obrigatório no ProductBase.
-    # Se precisar que o 'code' (SKU) seja obrigatório na criação,
-    # tu podes reescrever o campo aqui:
-    # code: str = Field(..., max_length=100)
+    # O Pydantic já herda a obrigatoriedade do 'name'.
     pass
 
-# ==========================================
-# Schema Update: Usado no PATCH/PUT
-# ==========================================
-class ProductUpdateSchema(ProductBaseSchema):
-    # Todos os campos viram opcionais para permitir updates parciais (PATCH)
+class ProductUpdateSchema(BaseModel):
+    # Tudo opcional para permitir o PATCH
     bling_id: Optional[int] = None
     name: Optional[str] = Field(None, max_length=200)
     code: Optional[str] = Field(None, max_length=100)
@@ -62,15 +50,6 @@ class ProductUpdateSchema(ProductBaseSchema):
     media_raw: Optional[Dict[str, Any]] = None
     custom_fields: Optional[List[Dict[str, Any]]] = None
 
-# ==========================================
-# Schema Response: Usado no retorno da API
-# ==========================================
-class ProductResponseSchema(ProductBaseSchema):
+class ProductResponseSchema(ProductBaseSchema, SoftDeleteMixinSchema):
     id: UUID
-    
-    # Supondo que teus mixins TimestampMixin e SoftDeleteMixin gerem esses campos:
-    created_at: datetime
-    updated_at: datetime
-
-    # Configuração do Pydantic V2 para ler objetos do SQLAlchemy (antigo orm_mode=True)
     model_config = ConfigDict(from_attributes=True)

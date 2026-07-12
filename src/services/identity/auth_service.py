@@ -26,8 +26,9 @@ class AuthService:
         existing_user = await self.user_repository.get_by_email(user_in.email)
         if existing_user:
             raise ValueError("Email already registered")
-
+        
         default_role = await self.user_repository.get_role_by_name("customer")
+        
         if default_role is None:
             raise ValueError("Default user role is not configured")
 
