@@ -73,6 +73,6 @@ ipython_config.py
 Thumbs.db
 
 tests
-.patch
+*.patch
 pytest.ini
-requirements-tests.txt
+requirements-test.txt
