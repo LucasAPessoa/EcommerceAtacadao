@@ -17,7 +17,7 @@ from src.schemas.identity.user_schema import (
 from src.schemas.response_schema import BaseResponse
 from src.services.identity.auth_service import AuthService
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(tags=["auth"])
 
 
 def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
