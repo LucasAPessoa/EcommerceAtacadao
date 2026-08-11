@@ -1,0 +1,111 @@
+from typing import List, Optional
+
+from src.integrations.melhor_envio.client import MelhorEnvioClient
+from src.integrations.melhor_envio.schemas import MelhorEnvioProductItem, MelhorEnvioQuote
+from src.repositories.catalog.product_variant_repository import ProductVariantRepository
+from src.schemas.operations.shipping_schema import ShippingCalculateItemSchema, ShippingQuoteSchema
+
+# Fallback caso a variação não tenha dimensões/peso cadastrados — evita
+# quebrar a cotação, mas o ideal é sempre ter esses dados reais no cadastro
+# de cada ProductVariant (weight_kg/height_cm/width_cm/length_cm).
+_FALLBACK_WEIGHT_KG = 0.3
+_FALLBACK_DIMENSION_CM = 11.0
+
+
+class ShippingService:
+    def __init__(
+        self,
+        variant_repository: ProductVariantRepository,
+        client: Optional[MelhorEnvioClient] = None,
+    ):
+        self.variant_repository = variant_repository
+        self.client = client or MelhorEnvioClient()
+
+    @staticmethod
+    def build_product_item(variant, quantity: int) -> MelhorEnvioProductItem:
+        """
+        Monta o item de cotação a partir de uma variante já carregada.
+        Fica exposto como staticmethod pra quem já tem a variante em mãos
+        (ex: OrderService, que já buscou a variante pra montar o pedido)
+        não precisar buscar de novo só pra calcular o frete.
+        """
+        return MelhorEnvioProductItem(
+            id=str(variant.id),
+            width=variant.width_cm or _FALLBACK_DIMENSION_CM,
+            height=variant.height_cm or _FALLBACK_DIMENSION_CM,
+            length=variant.length_cm or _FALLBACK_DIMENSION_CM,
+            weight=variant.weight_kg or _FALLBACK_WEIGHT_KG,
+            insurance_value=round(float(variant.base_price), 2),
+            quantity=quantity,
+        )
+
+    async def _build_products(
+        self, items: List[ShippingCalculateItemSchema]
+    ) -> List[MelhorEnvioProductItem]:
+        products: List[MelhorEnvioProductItem] = []
+        for item in items:
+            variant = await self.variant_repository.get_by_id(item.variant_id)
+            if not variant:
+                raise ValueError(f"Variação {item.variant_id} não encontrada.")
+            products.append(self.build_product_item(variant, item.quantity))
+        return products
+
+    @staticmethod
+    def _valid_quotes(quotes: List[MelhorEnvioQuote]) -> List[MelhorEnvioQuote]:
+        return [q for q in quotes if q.error is None and q.effective_price is not None]
+
+    async def _quotes_for_products(
+        self, origin_zip_code: str, destination_zip_code: str, products: List[MelhorEnvioProductItem]
+    ) -> List[ShippingQuoteSchema]:
+        quotes = await self.client.calculate(origin_zip_code, destination_zip_code, products)
+        valid = self._valid_quotes(quotes)
+
+        result = [
+            ShippingQuoteSchema(
+                service_id=q.id,
+                service_name=q.name,
+                company_name=q.company.name if q.company else None,
+                price=q.effective_price,
+                delivery_time_days=q.effective_delivery_time,
+            )
+            for q in valid
+        ]
+        return sorted(result, key=lambda q: q.price)
+
+    async def calculate_quotes(
+        self,
+        origin_zip_code: str,
+        destination_zip_code: str,
+        items: List[ShippingCalculateItemSchema],
+    ) -> List[ShippingQuoteSchema]:
+        """Devolve todas as opções de frete válidas, da mais barata pra mais cara."""
+        products = await self._build_products(items)
+        return await self._quotes_for_products(origin_zip_code, destination_zip_code, products)
+
+    async def get_cheapest_fee(
+        self,
+        origin_zip_code: str,
+        destination_zip_code: str,
+        items: List[ShippingCalculateItemSchema],
+    ) -> float:
+        """Usado quando só se tem variant_id+quantity (ex: endpoint público de cotação)."""
+        quotes = await self.calculate_quotes(origin_zip_code, destination_zip_code, items)
+        if not quotes:
+            raise ValueError("Não foi possível calcular o frete para este endereço.")
+        return quotes[0].price
+
+    async def get_cheapest_fee_for_products(
+        self,
+        origin_zip_code: str,
+        destination_zip_code: str,
+        products: List[MelhorEnvioProductItem],
+    ) -> float:
+        """
+        Usado quando quem chama já tem as variantes carregadas (ex:
+        OrderService, que já buscou cada variante pra montar o pedido) —
+        evita buscar a mesma variante duas vezes.
+        """
+        quotes = await self._quotes_for_products(origin_zip_code, destination_zip_code, products)
+        if not quotes:
+            raise ValueError("Não foi possível calcular o frete para este endereço.")
+        return quotes[0].price

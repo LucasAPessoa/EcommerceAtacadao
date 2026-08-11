@@ -74,6 +74,14 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
+class RoleSchema(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class UserResponse(UserBase):
     id: UUID
     full_name: Optional[str] = None
@@ -81,6 +89,7 @@ class UserResponse(UserBase):
     cnpj: Optional[str] = None
     corporate_name: Optional[str] = None
     ie: Optional[str] = None
+    role: RoleSchema
     created_at: datetime
     updated_at: Optional[datetime] = None
 

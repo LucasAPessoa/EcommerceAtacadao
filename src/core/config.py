@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_SECRET_KEY: str
 
+    # Integração de Frete (Melhor Envio) - https://docs.melhorenvio.com.br
+    MELHOR_ENVIO_TOKEN: str
+    MELHOR_ENVIO_BASE_URL: str = "https://sandbox.melhorenvio.com.br"
+    MELHOR_ENVIO_USER_AGENT: str
+    STORE_ORIGIN_ZIP_CODE: str
+
     # Configuração do Pydantic para ler o arquivo .env
     model_config = SettingsConfigDict(
         env_file=str(ROOT_DIR / ".env"),
