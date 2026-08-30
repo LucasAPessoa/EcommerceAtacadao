@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings(BaseSettings):
     # Informações da API
@@ -16,6 +18,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_SECRET_KEY: str
+    STOCK_RESERVATION_MINUTES: int = 15
 
     # Integração de Frete (Melhor Envio) - https://docs.melhorenvio.com.br
     MELHOR_ENVIO_TOKEN: str
@@ -28,8 +31,9 @@ class Settings(BaseSettings):
         env_file=str(ROOT_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore"
+        extra="ignore",
     )
+
 
 # Instância global para ser importada no resto do sistema
 settings = Settings()

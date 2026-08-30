@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -18,5 +19,5 @@ class ShippingQuoteSchema(BaseModel):
     service_id: Optional[int] = None
     service_name: Optional[str] = None
     company_name: Optional[str] = None
-    price: float
+    price: Decimal
     delivery_time_days: Optional[int] = None

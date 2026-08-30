@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List, Optional
 
 from src.integrations.melhor_envio.client import MelhorEnvioClient
@@ -22,7 +23,9 @@ class ShippingService:
         self.client = client or MelhorEnvioClient()
 
     @staticmethod
-    def build_product_item(variant, quantity: int) -> MelhorEnvioProductItem:
+    def build_product_item(
+        variant, quantity: int, insurance_unit_price: Optional[Decimal | float] = None
+    ) -> MelhorEnvioProductItem:
         """
         Monta o item de cotação a partir de uma variante já carregada.
         Fica exposto como staticmethod pra quem já tem a variante em mãos
@@ -35,7 +38,14 @@ class ShippingService:
             height=variant.height_cm if variant.height_cm is not None else _FALLBACK_DIMENSION_CM,
             length=variant.length_cm if variant.length_cm is not None else _FALLBACK_DIMENSION_CM,
             weight=variant.weight_kg if variant.weight_kg is not None else _FALLBACK_WEIGHT_KG,
-            insurance_value=round(float(variant.base_price or 0.0), 2),
+            insurance_value=round(
+                float(
+                    insurance_unit_price
+                    if insurance_unit_price is not None
+                    else variant.base_price or 0.0
+                ),
+                2,
+            ),
             quantity=quantity,
         )
 
@@ -55,7 +65,10 @@ class ShippingService:
         return [q for q in quotes if q.error is None and q.effective_price is not None]
 
     async def _quotes_for_products(
-        self, origin_zip_code: str, destination_zip_code: str, products: List[MelhorEnvioProductItem]
+        self,
+        origin_zip_code: str,
+        destination_zip_code: str,
+        products: List[MelhorEnvioProductItem],
     ) -> List[ShippingQuoteSchema]:
         quotes = await self.client.calculate(origin_zip_code, destination_zip_code, products)
         valid = self._valid_quotes(quotes)
@@ -80,6 +93,15 @@ class ShippingService:
     ) -> List[ShippingQuoteSchema]:
         """Devolve todas as opções de frete válidas, da mais barata pra mais cara."""
         products = await self._build_products(items)
+        return await self._quotes_for_products(origin_zip_code, destination_zip_code, products)
+
+    async def calculate_quotes_for_products(
+        self,
+        origin_zip_code: str,
+        destination_zip_code: str,
+        products: List[MelhorEnvioProductItem],
+    ) -> List[ShippingQuoteSchema]:
+        """Cota produtos já carregados, sem repetir consultas ao catálogo."""
         return await self._quotes_for_products(origin_zip_code, destination_zip_code, products)
 
     async def get_cheapest_fee(

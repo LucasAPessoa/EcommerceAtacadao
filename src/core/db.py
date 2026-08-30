@@ -1,5 +1,7 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from src.core.config import settings
 
 # 1. Criação do Motor (Engine) Assíncrono
@@ -7,21 +9,18 @@ from src.core.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,  # Mude para True se quiser ver as queries no console
-    future=True, # Garante compatibilidade total com SQLAlchemy 2.0
-    pool_size=5, # Quantidade de conexões simultâneas mantidas abertas
-    max_overflow=10 # Conexões extras permitidas em picos de tráfego
+    future=True,  # Garante compatibilidade total com SQLAlchemy 2.0
+    pool_size=5,  # Quantidade de conexões simultâneas mantidas abertas
+    max_overflow=10,  # Conexões extras permitidas em picos de tráfego
 )
 
 # 2. Fábrica de Sessões (Session Local)
-# expire_on_commit=False é crucial no modo assíncrono para podermos ler 
+# expire_on_commit=False é crucial no modo assíncrono para podermos ler
 # os dados do objeto mesmo depois de fazer o commit() no banco.
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    autocommit=False,
-    autoflush=False,
-    expire_on_commit=False
+    bind=engine, class_=AsyncSession, autocommit=False, autoflush=False, expire_on_commit=False
 )
+
 
 # 3. Injeção de Dependência para as Rotas do FastAPI
 # Essa função vai fornecer uma sessão limpa para cada request
@@ -30,6 +29,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            # A requisição é a fronteira transacional padrão. Repositories
+            # usam flush para compor várias alterações e somente um fluxo
+            # concluído com sucesso chega a este commit.
+            await session.commit()
         except Exception:
             # Garante rollback explícito de qualquer transação pendente antes de propagar o erro
             await session.rollback()

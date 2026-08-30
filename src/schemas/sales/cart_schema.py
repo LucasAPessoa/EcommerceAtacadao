@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List
 from uuid import UUID
 
@@ -26,14 +27,14 @@ class CartItemResponseSchema(BaseModel):
 
     @computed_field
     @property
-    def subtotal(self) -> float:
-        return round(self.variant.base_price * self.quantity, 2)
+    def subtotal(self) -> Decimal:
+        return self.variant.base_price * self.quantity
 
 
 class CartResponseSchema(TimestampMixinSchema):
     id: UUID
     user_id: UUID
-    items: List[CartItemResponseSchema] = []
+    items: List[CartItemResponseSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,5 +45,5 @@ class CartResponseSchema(TimestampMixinSchema):
 
     @computed_field
     @property
-    def total_amount(self) -> float:
-        return round(sum(item.subtotal for item in self.items), 2)
+    def total_amount(self) -> Decimal:
+        return sum((item.subtotal for item in self.items), Decimal("0.00"))

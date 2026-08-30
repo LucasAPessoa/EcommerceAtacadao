@@ -1,28 +1,45 @@
 import enum
 
+
 class UserTypeEnum(str, enum.Enum):
     INDIVIDUAL = "INDIVIDUAL"
     COMPANY = "COMPANY"
     ADMIN = "ADMIN"
 
+
 class OrderStatusEnum(str, enum.Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    PREPARING = "PREPARING"
+    PENDING_PAYMENT = "PENDING_PAYMENT"
+    PAID = "PAID"
+    PROCESSING = "PROCESSING"
     SHIPPED = "SHIPPED"
     DELIVERED = "DELIVERED"
     CANCELED = "CANCELED"
+    EXPIRED = "EXPIRED"
+
 
 class PaymentMethodEnum(str, enum.Enum):
     PIX = "PIX"
     CREDIT_CARD = "CREDIT_CARD"
     BOLETO = "BOLETO"
 
+
 class TransactionStatusEnum(str, enum.Enum):
     PENDING = "PENDING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
+    PROCESSING = "PROCESSING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELED = "CANCELED"
     REFUNDED = "REFUNDED"
+    PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"
+    CHARGEBACK = "CHARGEBACK"
+
+
+class StockReservationStatusEnum(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    CONFIRMED = "CONFIRMED"
+    RELEASED = "RELEASED"
+    EXPIRED = "EXPIRED"
+
 
 class RefundStatusEnum(str, enum.Enum):
     REQUESTED = "REQUESTED"
@@ -30,11 +47,13 @@ class RefundStatusEnum(str, enum.Enum):
     REJECTED = "REJECTED"
     COMPLETED = "COMPLETED"
 
+
 class ShipmentStatusEnum(str, enum.Enum):
     PREPARING = "PREPARING"
     SHIPPED = "SHIPPED"
     DELIVERED = "DELIVERED"
     RETURNED = "RETURNED"
+
 
 class DiscountTypeEnum(str, enum.Enum):
     PERCENTAGE = "PERCENTAGE"

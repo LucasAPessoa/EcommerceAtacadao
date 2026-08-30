@@ -23,13 +23,18 @@ Se as tabelas ainda não existirem (não rodou alembic ainda), roda com:
 Isso usa Base.metadata.create_all() como atalho — não substitui as
 migrations de verdade, é só pra popular rápido num ambiente de teste.
 """
+
 import argparse
 import asyncio
 import sys
-from datetime import datetime, timedelta, UTC
+import uuid
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sqlalchemy import select
 
 from src.core.db import AsyncSessionLocal, engine
 from src.core.sec import get_password_hash
@@ -46,9 +51,8 @@ from src.models.catalog import (
 )
 from src.models.enums import DiscountTypeEnum, OrderStatusEnum, PaymentMethodEnum, UserTypeEnum
 from src.models.identity import Address, Role, User
-from src.models.sales import Cart, CartItem, Coupon, Order, OrderItem, OrderStatusHistory
 from src.models.operations import Transaction
-from sqlalchemy import select
+from src.models.sales import Cart, CartItem, Coupon, Order, OrderItem, OrderStatusHistory
 
 
 def placeholder_image(text: str, bg: str) -> str:
@@ -157,7 +161,10 @@ async def seed(create_tables: bool) -> None:
         categories: dict[str, Category] = {}
         for name in category_names:
             category, _ = await get_or_create(
-                session, Category, name=name, defaults=dict(description=f"Produtos de {name.lower()}", is_active=True)
+                session,
+                Category,
+                name=name,
+                defaults=dict(description=f"Produtos de {name.lower()}", is_active=True),
             )
             categories[name] = category
 
@@ -165,54 +172,102 @@ async def seed(create_tables: bool) -> None:
         # (nome, categoria, code, brand, unit, [(variacao, sku, preco, estoque, peso_kg, dims_cm)])
         product_specs = [
             (
-                "Detergente Neutro 5L", "Limpeza", "DET-5L", "Ypê", "UN",
+                "Detergente Neutro 5L",
+                "Limpeza",
+                "DET-5L",
+                "Ypê",
+                "UN",
                 [("Padrão", "DET-5L-UN", 24.90, 120, 5.3, (28, 15, 15))],
             ),
             (
-                "Água Sanitária 5L", "Limpeza", "AGSAN-5L", "Qboa", "UN",
+                "Água Sanitária 5L",
+                "Limpeza",
+                "AGSAN-5L",
+                "Qboa",
+                "UN",
                 [("Padrão", "AGSAN-5L-UN", 18.50, 90, 5.1, (28, 15, 15))],
             ),
             (
-                "Papel Higiênico Folha Dupla", "Limpeza", "PH-FD16", "Personal", "FD",
+                "Papel Higiênico Folha Dupla",
+                "Limpeza",
+                "PH-FD16",
+                "Personal",
+                "FD",
                 [("Fardo 16 rolos", "PH-FD16-UN", 39.90, 60, 3.2, (40, 30, 30))],
             ),
             (
-                "Arroz Tipo 1", "Alimentos", "ARZ-T1", "Tio João", "KG",
+                "Arroz Tipo 1",
+                "Alimentos",
+                "ARZ-T1",
+                "Tio João",
+                "KG",
                 [
                     ("Pacote 5kg", "ARZ-T1-5KG", 27.90, 150, 5.0, (35, 20, 8)),
                     ("Saca 25kg", "ARZ-T1-25KG", 119.90, 40, 25.0, (60, 40, 15)),
                 ],
             ),
             (
-                "Feijão Carioca", "Alimentos", "FEI-CAR", "Camil", "KG",
+                "Feijão Carioca",
+                "Alimentos",
+                "FEI-CAR",
+                "Camil",
+                "KG",
                 [("Pacote 1kg", "FEI-CAR-1KG", 8.90, 200, 1.0, (18, 12, 5))],
             ),
             (
-                "Óleo de Soja", "Alimentos", "OLEO-SOJA", "Liza", "CX",
+                "Óleo de Soja",
+                "Alimentos",
+                "OLEO-SOJA",
+                "Liza",
+                "CX",
                 [("Caixa c/ 20 (900ml)", "OLEO-SOJA-CX20", 149.90, 35, 18.0, (35, 25, 25))],
             ),
             (
-                "Café Torrado e Moído", "Alimentos", "CAFE-500", "Pilão", "UN",
+                "Café Torrado e Moído",
+                "Alimentos",
+                "CAFE-500",
+                "Pilão",
+                "UN",
                 [("Pacote 500g", "CAFE-500-UN", 16.90, 100, 0.5, (18, 10, 6))],
             ),
             (
-                "Macarrão Espaguete", "Alimentos", "MAC-ESP", "Adria", "CX",
+                "Macarrão Espaguete",
+                "Alimentos",
+                "MAC-ESP",
+                "Adria",
+                "CX",
                 [("Caixa c/ 10 (500g)", "MAC-ESP-CX10", 42.00, 55, 5.0, (30, 20, 12))],
             ),
             (
-                "Refrigerante Cola 2L", "Bebidas", "REFRI-COLA-2L", "Coca-Cola", "FD",
+                "Refrigerante Cola 2L",
+                "Bebidas",
+                "REFRI-COLA-2L",
+                "Coca-Cola",
+                "FD",
                 [("Fardo com 6", "REFRI-COLA-2L-FD6", 54.90, 45, 12.5, (40, 30, 20))],
             ),
             (
-                "Água Mineral 500ml", "Bebidas", "AGUA-500", "Crystal", "FD",
+                "Água Mineral 500ml",
+                "Bebidas",
+                "AGUA-500",
+                "Crystal",
+                "FD",
                 [("Fardo com 12", "AGUA-500-FD12", 15.90, 80, 6.5, (30, 20, 20))],
             ),
             (
-                "Sabonete em Barra", "Higiene Pessoal", "SAB-BARRA", "Lux", "KIT",
+                "Sabonete em Barra",
+                "Higiene Pessoal",
+                "SAB-BARRA",
+                "Lux",
+                "KIT",
                 [("Kit com 12", "SAB-BARRA-KIT12", 22.90, 70, 1.1, (20, 15, 8))],
             ),
             (
-                "Shampoo Neutro 1L", "Higiene Pessoal", "SHAMP-1L", "Palmolive", "UN",
+                "Shampoo Neutro 1L",
+                "Higiene Pessoal",
+                "SHAMP-1L",
+                "Palmolive",
+                "UN",
                 [
                     ("1 Litro", "SHAMP-1L-UN", 21.90, 65, 1.05, (25, 8, 8)),
                     ("Refil 1 Litro", "SHAMP-1L-REFIL", 17.90, 40, 1.0, (22, 6, 6)),
@@ -236,7 +291,9 @@ async def seed(create_tables: bool) -> None:
                 code=code,
                 defaults=dict(
                     name=name,
-                    description=f"{name} de qualidade, ideal pra revenda ou consumo em grande volume.",
+                    description=(
+                        f"{name} de qualidade, ideal pra revenda ou consumo em grande volume."
+                    ),
                     is_active=True,
                     brand=brand,
                     unit=unit,
@@ -299,9 +356,23 @@ async def seed(create_tables: bool) -> None:
         # --- Faixas de preço (compra em quantidade) ---
         arroz_5kg = variants_by_code["ARZ-T1-5KG"].product_id
         cafe = variants_by_code["CAFE-500-UN"].product_id
-        await get_or_create(session, PricingTier, product_id=arroz_5kg, min_quantity=10, defaults=dict(unit_price=25.90))
-        await get_or_create(session, PricingTier, product_id=arroz_5kg, min_quantity=30, defaults=dict(unit_price=23.90))
-        await get_or_create(session, PricingTier, product_id=cafe, min_quantity=20, defaults=dict(unit_price=14.90))
+        await get_or_create(
+            session,
+            PricingTier,
+            product_id=arroz_5kg,
+            min_quantity=10,
+            defaults=dict(unit_price=25.90),
+        )
+        await get_or_create(
+            session,
+            PricingTier,
+            product_id=arroz_5kg,
+            min_quantity=30,
+            defaults=dict(unit_price=23.90),
+        )
+        await get_or_create(
+            session, PricingTier, product_id=cafe, min_quantity=20, defaults=dict(unit_price=14.90)
+        )
 
         # --- Avaliações e perguntas ---
         review_targets = ["DET-5L-UN", "ARZ-T1-5KG", "REFRI-COLA-2L-FD6", "SHAMP-1L-UN"]
@@ -336,7 +407,9 @@ async def seed(create_tables: bool) -> None:
         for sku, (question_text, answer_text) in zip(question_targets, questions):
             variant = variants_by_code[sku]
             existing = await session.execute(
-                select(ProductQuestion).filter_by(product_id=variant.product_id, user_id=customer2.id)
+                select(ProductQuestion).filter_by(
+                    product_id=variant.product_id, user_id=customer2.id
+                )
             )
             if not existing.scalar_one_or_none():
                 session.add(
@@ -398,6 +471,7 @@ async def seed(create_tables: bool) -> None:
             order = Order(
                 user_id=user.id,
                 status=status,
+                checkout_idempotency_key=uuid.uuid4(),
                 shipping_address_snapshot={
                     "zip_code": address.zip_code,
                     "street": address.street,
@@ -408,8 +482,11 @@ async def seed(create_tables: bool) -> None:
                     "state": address.state,
                 },
                 discount_amount=0,
-                shipping_fee=19.90,
-                total_amount=round(subtotal + 19.90, 2),
+                subtotal_amount=subtotal,
+                shipping_fee=Decimal("19.90"),
+                total_amount=subtotal + Decimal("19.90"),
+                shipping_provider="SEED",
+                shipping_service_name="Entrega de demonstração",
             )
             session.add(order)
             await session.flush()
@@ -422,6 +499,17 @@ async def seed(create_tables: bool) -> None:
                         variant_id=variant.id,
                         quantity=qty,
                         unit_price_snapshot=variant.base_price,
+                        base_price_snapshot=variant.base_price,
+                        product_name_snapshot=variant.product.name,
+                        variation_name_snapshot=variant.variation_name,
+                        sku_snapshot=variant.bling_sku,
+                        pricing_tier_min_quantity=None,
+                        logistics_snapshot={
+                            "weight_kg": variant.weight_kg,
+                            "height_cm": variant.height_cm,
+                            "width_cm": variant.width_cm,
+                            "length_cm": variant.length_cm,
+                        },
                     )
                 )
 
@@ -434,14 +522,28 @@ async def seed(create_tables: bool) -> None:
                 )
             )
             session.add(
-                OrderStatusHistory(order_id=order.id, old_status=None, new_status=status, changed_by_user_id=user.id)
+                OrderStatusHistory(
+                    order_id=order.id,
+                    old_status=None,
+                    new_status=status,
+                    changed_by_user_id=user.id,
+                )
             )
 
         existing_orders = await session.execute(select(Order).filter_by(user_id=customer1.id))
         if not existing_orders.scalars().first():
-            await create_order(customer1, OrderStatusEnum.PENDING, [("CAFE-500-UN", 3)], address1)
-            await create_order(customer1, OrderStatusEnum.SHIPPED, [("REFRI-COLA-2L-FD6", 2), ("AGUA-500-FD12", 1)], address1)
-            await create_order(customer1, OrderStatusEnum.CANCELED, [("SAB-BARRA-KIT12", 1)], address1)
+            await create_order(
+                customer1, OrderStatusEnum.PENDING_PAYMENT, [("CAFE-500-UN", 3)], address1
+            )
+            await create_order(
+                customer1,
+                OrderStatusEnum.SHIPPED,
+                [("REFRI-COLA-2L-FD6", 2), ("AGUA-500-FD12", 1)],
+                address1,
+            )
+            await create_order(
+                customer1, OrderStatusEnum.CANCELED, [("SAB-BARRA-KIT12", 1)], address1
+            )
 
         await session.commit()
 
@@ -458,7 +560,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--create-tables",
         action="store_true",
-        help="Roda Base.metadata.create_all() antes de popular (atalho pra quem ainda não rodou as migrations).",
+        help=(
+            "Roda Base.metadata.create_all() antes de popular "
+            "(atalho pra quem ainda não rodou as migrations)."
+        ),
     )
     args = parser.parse_args()
     asyncio.run(seed(create_tables=args.create_tables))

@@ -1,8 +1,12 @@
-from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.schemas.base_schema import SoftDeleteMixinSchema
+
 
 class ProductVariantBaseSchema(BaseModel):
     bling_id: Optional[int] = None
@@ -10,7 +14,7 @@ class ProductVariantBaseSchema(BaseModel):
     variation_name: str = Field(..., max_length=100)
     gtin: Optional[str] = Field(None, max_length=50)
     packaging_gtin: Optional[str] = Field(None, max_length=50)
-    base_price: float = Field(..., ge=0)
+    base_price: Decimal = Field(..., ge=0)
     stock_quantity: int = Field(0, ge=0)
     last_bling_sync: Optional[datetime] = None
     is_active: bool = True
@@ -19,8 +23,10 @@ class ProductVariantBaseSchema(BaseModel):
     width_cm: Optional[float] = Field(None, ge=0)
     length_cm: Optional[float] = Field(None, ge=0)
 
+
 class ProductVariantCreateSchema(ProductVariantBaseSchema):
     product_id: UUID
+
 
 class ProductVariantUpdateSchema(BaseModel):
     bling_id: Optional[int] = None
@@ -28,7 +34,7 @@ class ProductVariantUpdateSchema(BaseModel):
     variation_name: Optional[str] = Field(None, max_length=100)
     gtin: Optional[str] = Field(None, max_length=50)
     packaging_gtin: Optional[str] = Field(None, max_length=50)
-    base_price: Optional[float] = Field(None, ge=0)
+    base_price: Optional[Decimal] = Field(None, ge=0)
     stock_quantity: Optional[int] = Field(None, ge=0)
     last_bling_sync: Optional[datetime] = None
     is_active: Optional[bool] = None
@@ -36,6 +42,7 @@ class ProductVariantUpdateSchema(BaseModel):
     height_cm: Optional[float] = Field(None, ge=0)
     width_cm: Optional[float] = Field(None, ge=0)
     length_cm: Optional[float] = Field(None, ge=0)
+
 
 class ProductVariantResponseSchema(ProductVariantBaseSchema, SoftDeleteMixinSchema):
     id: UUID

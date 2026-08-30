@@ -72,7 +72,6 @@ ipython_config.py
 .DS_Store
 Thumbs.db
 
-tests
 *.patch
 pytest.ini
 requirements-test.txt

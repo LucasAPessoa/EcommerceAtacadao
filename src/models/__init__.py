@@ -23,13 +23,30 @@ from .identity import Address, RefreshToken, Role, User
 from .operations import ERPWebhookLog, LocalCEPRange, Refund, Shipment, Transaction
 
 # Domínio de Vendas (Carts, Orders, Coupons)
-from .sales import Cart, CartItem, Coupon, Order, OrderItem
+from .sales import Cart, CartItem, Coupon, Order, OrderItem, StockReservation
 
 __all__ = [
     "Base",
-    "Role", "User", "RefreshToken", "Address",
-    "Category", "Product", "ProductVariant", "ProductImage", "PricingTier",
-    "ProductReview", "ProductQuestion",
-    "Coupon", "Cart", "CartItem", "Order", "OrderItem",
-    "Transaction", "Refund", "LocalCEPRange", "Shipment", "ERPWebhookLog"
+    "Role",
+    "User",
+    "RefreshToken",
+    "Address",
+    "Category",
+    "Product",
+    "ProductVariant",
+    "ProductImage",
+    "PricingTier",
+    "ProductReview",
+    "ProductQuestion",
+    "Coupon",
+    "Cart",
+    "CartItem",
+    "Order",
+    "OrderItem",
+    "StockReservation",
+    "Transaction",
+    "Refund",
+    "LocalCEPRange",
+    "Shipment",
+    "ERPWebhookLog",
 ]
