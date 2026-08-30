@@ -24,6 +24,10 @@ class CartService:
     async def get_or_create_cart(self, user_id: UUID) -> CartResponseSchema:
         """Sempre devolve um carrinho (cria um vazio na primeira vez)."""
         cart = await self._get_or_create_cart(user_id)
+        # Refetch com selectinload pra carregar `items` sem lazy-load
+        # síncrono (que quebra em async session com MissingGreenlet).
+        if cart is not None:
+            cart = await self.repository.get_by_id(cart.id) or cart
         return CartResponseSchema.model_validate(cart)
 
     async def add_item(self, user_id: UUID, item_in: CartItemCreateSchema) -> CartResponseSchema:

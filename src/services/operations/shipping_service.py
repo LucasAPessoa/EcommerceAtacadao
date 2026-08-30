@@ -31,11 +31,11 @@ class ShippingService:
         """
         return MelhorEnvioProductItem(
             id=str(variant.id),
-            width=variant.width_cm or _FALLBACK_DIMENSION_CM,
-            height=variant.height_cm or _FALLBACK_DIMENSION_CM,
-            length=variant.length_cm or _FALLBACK_DIMENSION_CM,
-            weight=variant.weight_kg or _FALLBACK_WEIGHT_KG,
-            insurance_value=round(float(variant.base_price), 2),
+            width=variant.width_cm if variant.width_cm is not None else _FALLBACK_DIMENSION_CM,
+            height=variant.height_cm if variant.height_cm is not None else _FALLBACK_DIMENSION_CM,
+            length=variant.length_cm if variant.length_cm is not None else _FALLBACK_DIMENSION_CM,
+            weight=variant.weight_kg if variant.weight_kg is not None else _FALLBACK_WEIGHT_KG,
+            insurance_value=round(float(variant.base_price or 0.0), 2),
             quantity=quantity,
         )
 

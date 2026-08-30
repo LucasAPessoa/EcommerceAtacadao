@@ -35,6 +35,21 @@ class MelhorEnvioClient:
         self.base_url = settings.MELHOR_ENVIO_BASE_URL
         self.token = settings.MELHOR_ENVIO_TOKEN
         self.user_agent = settings.MELHOR_ENVIO_USER_AGENT
+        self._validate_config()
+
+    def _validate_config(self) -> None:
+        """Validate that all required configuration values are present."""
+        missing = []
+        if not self.base_url:
+            missing.append("MELHOR_ENVIO_BASE_URL")
+        if not self.token:
+            missing.append("MELHOR_ENVIO_TOKEN")
+        if not self.user_agent:
+            missing.append("MELHOR_ENVIO_USER_AGENT")
+        if missing:
+            raise ValueError(
+                f"Melhor Envio client misconfigured. Missing or empty: {', '.join(missing)}"
+            )
 
     def _headers(self) -> dict:
         return {

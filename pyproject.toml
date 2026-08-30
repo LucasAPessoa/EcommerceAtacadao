@@ -50,3 +50,9 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"] # Ativa as regras de Erros, Funcionalidades e ordenação de Imports (I)
+
+# pytest-asyncio: marca todos os testes async automaticamente como asyncio
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

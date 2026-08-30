@@ -41,7 +41,12 @@ class MelhorEnvioQuote(BaseModel):
     def effective_price(self) -> Optional[float]:
         """A doc recomenda sempre priorizar custom_price sobre price."""
         value = self.custom_price if self.custom_price is not None else self.price
-        return float(value) if value is not None else None
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     @property
     def effective_delivery_time(self) -> Optional[int]:

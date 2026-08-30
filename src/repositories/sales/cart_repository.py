@@ -39,7 +39,9 @@ class CartRepository:
         cart = Cart(user_id=user_id)
         self.session.add(cart)
         await self.session.flush()
-        cart.items = []  # carrinho recém-criado, sem itens ainda
+        # No async session, atribuir `cart.items = []` dispara um lazy-load
+        # síncrono, que quebra com MissingGreenlet. Como acabamos de criar o
+        # carrinho, não há itens anteriores — basta devolver.
         return cart
 
     async def get_item_by_variant(self, cart_id: UUID, variant_id: UUID) -> Optional[CartItem]:
