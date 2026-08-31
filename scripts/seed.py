@@ -1,12 +1,9 @@
 """
 Seed de dados pra testar a conexão entre o front e o back.
 
-Cria: roles, usuários (1 admin + 2 clientes), categorias, produtos com
-variantes (peso/dimensões preenchidos pra cotação de frete funcionar),
-imagens (URLs de placeholder, nenhuma imagem real), faixas de preço,
-avaliações, perguntas, endereços, cupons, um carrinho já com item, e
-pedidos em status diferentes (pendente/enviado/cancelado) pra dar pra ver
-a tela de pedidos populada sem precisar clicar em nada antes.
+Cria um dataset determinístico com todas as entidades persistentes e todos os
+valores dos enums de identidade, catálogo, checkout, pagamento e logística.
+Os pedidos preservam snapshots de preço/logística como o checkout transacional.
 
 Idempotente: rodar de novo não duplica nada (busca por email/código/nome
 antes de criar). Se quiser recomeçar do zero, dropa o banco e roda as
@@ -41,18 +38,38 @@ from src.core.sec import get_password_hash
 from src.models import Base
 from src.models.catalog import (
     Category,
+    ListingAttribute,
+    ListingImage,
     PricingTier,
     Product,
     ProductImage,
+    ProductListing,
     ProductQuestion,
     ProductReview,
     ProductVariant,
     product_category_table,
 )
-from src.models.enums import DiscountTypeEnum, OrderStatusEnum, PaymentMethodEnum, UserTypeEnum
-from src.models.identity import Address, Role, User
-from src.models.operations import Transaction
-from src.models.sales import Cart, CartItem, Coupon, Order, OrderItem, OrderStatusHistory
+from src.models.enums import (
+    DiscountTypeEnum,
+    OrderStatusEnum,
+    PaymentMethodEnum,
+    RefundStatusEnum,
+    ShipmentStatusEnum,
+    StockReservationStatusEnum,
+    TransactionStatusEnum,
+    UserTypeEnum,
+)
+from src.models.identity import Address, RefreshToken, Role, User
+from src.models.operations import ERPWebhookLog, LocalCEPRange, Refund, Shipment, Transaction
+from src.models.sales import (
+    Cart,
+    CartItem,
+    Coupon,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    StockReservation,
+)
 
 
 def placeholder_image(text: str, bg: str) -> str:
@@ -69,6 +86,67 @@ async def get_or_create(session, model, defaults: dict | None = None, **lookup):
     session.add(instance)
     await session.flush()
     return instance, True
+
+
+async def validate_seed(session) -> None:
+    """Falha explicitamente se alguma entidade ou valor de enum não foi criado."""
+    entity_models = (
+        Role,
+        User,
+        RefreshToken,
+        Address,
+        Category,
+        Product,
+        ProductVariant,
+        ProductListing,
+        ListingAttribute,
+        ListingImage,
+        ProductImage,
+        PricingTier,
+        ProductReview,
+        ProductQuestion,
+        Coupon,
+        Cart,
+        CartItem,
+        Order,
+        OrderItem,
+        StockReservation,
+        OrderStatusHistory,
+        Transaction,
+        Refund,
+        LocalCEPRange,
+        Shipment,
+        ERPWebhookLog,
+    )
+    missing_entities = []
+    for model in entity_models:
+        result = await session.execute(select(model).limit(1))
+        if result.scalars().first() is None:
+            missing_entities.append(model.__tablename__)
+    if missing_entities:
+        raise RuntimeError(f"Entidades sem dados no seed: {', '.join(missing_entities)}")
+
+    enum_columns = (
+        ("user_type", User.user_type, UserTypeEnum),
+        ("discount_type", Coupon.discount_type, DiscountTypeEnum),
+        ("order_status", Order.status, OrderStatusEnum),
+        ("payment_method", Transaction.payment_method, PaymentMethodEnum),
+        ("transaction_status", Transaction.status, TransactionStatusEnum),
+        ("reservation_status", StockReservation.status, StockReservationStatusEnum),
+        ("refund_status", Refund.status, RefundStatusEnum),
+        ("shipment_status", Shipment.status, ShipmentStatusEnum),
+    )
+    missing_enum_values: list[str] = []
+    for name, column, enum_type in enum_columns:
+        result = await session.execute(select(column).distinct())
+        actual = {value.value for value in result.scalars().all()}
+        expected = {value.value for value in enum_type}
+        for value in sorted(expected - actual):
+            missing_enum_values.append(f"{name}.{value}")
+    if missing_enum_values:
+        raise RuntimeError(
+            "Valores de enum ausentes no seed: " + ", ".join(missing_enum_values)
+        )
 
 
 async def seed(create_tables: bool) -> None:
@@ -121,6 +199,19 @@ async def seed(create_tables: bool) -> None:
                 cpf="33344455566",
                 cnpj="12345678000199",
                 corporate_name="Mercadinho Boa Vista Ltda",
+            ),
+        )
+
+        # Token revogado de referência: cobre a entidade sem criar uma sessão
+        # autenticável válida no dataset.
+        await get_or_create(
+            session,
+            RefreshToken,
+            token="seed-revoked-refresh-token",
+            defaults=dict(
+                user_id=customer1.id,
+                expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+                revoked=True,
             ),
         )
 
@@ -353,6 +444,43 @@ async def seed(create_tables: bool) -> None:
 
         await session.flush()
 
+        # --- Anúncio de marketplace + atributos + imagens ---
+        detergent_product_id = variants_by_code["DET-5L-UN"].product_id
+        listing, _ = await get_or_create(
+            session,
+            ProductListing,
+            bling_id=900001,
+            defaults=dict(
+                product_id=detergent_product_id,
+                title="Detergente Neutro 5L — Atacado",
+                description="Anúncio de referência sincronizado com o ERP.",
+                status=1,
+            ),
+        )
+        await get_or_create(
+            session,
+            ListingAttribute,
+            listing_id=listing.id,
+            name="Volume",
+            defaults=dict(
+                bling_external_id="volume-5l",
+                attribute_type="measurement",
+                value="5",
+                unit="L",
+            ),
+        )
+        await get_or_create(
+            session,
+            ListingImage,
+            listing_id=listing.id,
+            sort_order=1,
+            defaults=dict(
+                bling_id=910001,
+                url=placeholder_image("Detergente Neutro 5L", "1e3a5f"),
+                image_type="PRIMARY",
+            ),
+        )
+
         # --- Faixas de preço (compra em quantidade) ---
         arroz_5kg = variants_by_code["ARZ-T1-5KG"].product_id
         cafe = variants_by_code["CAFE-500-UN"].product_id
@@ -446,6 +574,30 @@ async def seed(create_tables: bool) -> None:
                 is_active=True,
             ),
         )
+        await get_or_create(
+            session,
+            Coupon,
+            code="MENOS15",
+            defaults=dict(
+                discount_type=DiscountTypeEnum.FIXED_AMOUNT,
+                discount_value=15,
+                min_order_amount=100,
+                expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=90),
+                is_active=True,
+            ),
+        )
+        await get_or_create(
+            session,
+            Coupon,
+            code="EXPIRADO",
+            defaults=dict(
+                discount_type=DiscountTypeEnum.PERCENTAGE,
+                discount_value=20,
+                min_order_amount=None,
+                expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1),
+                is_active=False,
+            ),
+        )
 
         await session.flush()
 
@@ -460,17 +612,22 @@ async def seed(create_tables: bool) -> None:
             if not existing_item.scalar_one_or_none():
                 session.add(CartItem(cart_id=cart.id, variant_id=variant.id, quantity=qty))
 
-        # --- Pedidos em status diferentes ---
+        # --- Pedidos e operações derivados do checkout ---
         async def create_order(
             user: User,
-            status: OrderStatusEnum,
+            order_status: OrderStatusEnum,
             items_specs: list[tuple[str, int]],
             address: Address,
-        ) -> None:
-            subtotal = sum(variants_by_code[sku].base_price * qty for sku, qty in items_specs)
+            payment_method: PaymentMethodEnum,
+            transaction_status: TransactionStatusEnum,
+        ) -> tuple[Order, Transaction]:
+            subtotal = sum(
+                (Decimal(str(variants_by_code[sku].base_price)) * qty for sku, qty in items_specs),
+                Decimal("0.00"),
+            )
             order = Order(
                 user_id=user.id,
-                status=status,
+                status=order_status,
                 checkout_idempotency_key=uuid.uuid4(),
                 shipping_address_snapshot={
                     "zip_code": address.zip_code,
@@ -493,14 +650,18 @@ async def seed(create_tables: bool) -> None:
 
             for sku, qty in items_specs:
                 variant = variants_by_code[sku]
+                product_name_result = await session.execute(
+                    select(Product.name).where(Product.id == variant.product_id)
+                )
+                product_name = product_name_result.scalar_one()
                 session.add(
                     OrderItem(
                         order_id=order.id,
                         variant_id=variant.id,
                         quantity=qty,
-                        unit_price_snapshot=variant.base_price,
-                        base_price_snapshot=variant.base_price,
-                        product_name_snapshot=variant.product.name,
+                        unit_price_snapshot=Decimal(str(variant.base_price)),
+                        base_price_snapshot=Decimal(str(variant.base_price)),
+                        product_name_snapshot=product_name,
                         variation_name_snapshot=variant.variation_name,
                         sku_snapshot=variant.bling_sku,
                         pricing_tier_min_quantity=None,
@@ -513,41 +674,186 @@ async def seed(create_tables: bool) -> None:
                     )
                 )
 
-            session.add(
-                Transaction(
-                    order_id=order.id,
-                    payment_method=PaymentMethodEnum.PIX,
-                    amount=order.total_amount,
-                    installments=1,
-                )
+            transaction = Transaction(
+                order_id=order.id,
+                payment_method=payment_method,
+                gateway_ref_id=f"SEED-{order_status.value}",
+                amount=order.total_amount,
+                installments=3 if payment_method == PaymentMethodEnum.CREDIT_CARD else 1,
+                status=transaction_status,
+                paid_at=(
+                    datetime.now(UTC).replace(tzinfo=None)
+                    if transaction_status == TransactionStatusEnum.APPROVED
+                    else None
+                ),
             )
+            session.add(transaction)
             session.add(
                 OrderStatusHistory(
                     order_id=order.id,
                     old_status=None,
-                    new_status=status,
+                    new_status=order_status,
                     changed_by_user_id=user.id,
                 )
             )
+            await session.flush()
+            return order, transaction
 
-        existing_orders = await session.execute(select(Order).filter_by(user_id=customer1.id))
-        if not existing_orders.scalars().first():
-            await create_order(
-                customer1, OrderStatusEnum.PENDING_PAYMENT, [("CAFE-500-UN", 3)], address1
+        order_scenarios = [
+            (OrderStatusEnum.PENDING_PAYMENT, "CAFE-500-UN", PaymentMethodEnum.PIX,
+             TransactionStatusEnum.PENDING),
+            (OrderStatusEnum.PAID, "DET-5L-UN", PaymentMethodEnum.CREDIT_CARD,
+             TransactionStatusEnum.PROCESSING),
+            (OrderStatusEnum.PROCESSING, "ARZ-T1-5KG", PaymentMethodEnum.BOLETO,
+             TransactionStatusEnum.APPROVED),
+            (OrderStatusEnum.SHIPPED, "REFRI-COLA-2L-FD6", PaymentMethodEnum.PIX,
+             TransactionStatusEnum.REJECTED),
+            (OrderStatusEnum.DELIVERED, "AGUA-500-FD12", PaymentMethodEnum.CREDIT_CARD,
+             TransactionStatusEnum.CANCELED),
+            (OrderStatusEnum.CANCELED, "SAB-BARRA-KIT12", PaymentMethodEnum.BOLETO,
+             TransactionStatusEnum.REFUNDED),
+            (OrderStatusEnum.EXPIRED, "SHAMP-1L-UN", PaymentMethodEnum.PIX,
+             TransactionStatusEnum.PARTIALLY_REFUNDED),
+        ]
+        orders_by_status: dict[OrderStatusEnum, Order] = {}
+        transactions_by_status: dict[TransactionStatusEnum, Transaction] = {}
+        for order_status, sku, payment_method, transaction_status in order_scenarios:
+            existing = await session.execute(
+                select(Order).filter_by(user_id=customer1.id, status=order_status)
             )
-            await create_order(
-                customer1,
-                OrderStatusEnum.SHIPPED,
-                [("REFRI-COLA-2L-FD6", 2), ("AGUA-500-FD12", 1)],
-                address1,
-            )
-            await create_order(
-                customer1, OrderStatusEnum.CANCELED, [("SAB-BARRA-KIT12", 1)], address1
+            order = existing.scalars().first()
+            if order is None:
+                order, transaction = await create_order(
+                    customer1,
+                    order_status,
+                    [(sku, 1)],
+                    address1,
+                    payment_method,
+                    transaction_status,
+                )
+            else:
+                transaction_result = await session.execute(
+                    select(Transaction).where(Transaction.order_id == order.id)
+                )
+                transaction = transaction_result.scalars().first()
+            orders_by_status[order_status] = order
+            if transaction is not None:
+                transactions_by_status[transaction_status] = transaction
+
+        # Um pedido pode registrar múltiplas tentativas de pagamento. Isso
+        # permite representar todos os estados do gateway sem falsificar o
+        # estado comercial do pedido.
+        chargeback_transaction, _ = await get_or_create(
+            session,
+            Transaction,
+            gateway_ref_id="SEED-CHARGEBACK",
+            defaults=dict(
+                order_id=orders_by_status[OrderStatusEnum.DELIVERED].id,
+                payment_method=PaymentMethodEnum.CREDIT_CARD,
+                amount=orders_by_status[OrderStatusEnum.DELIVERED].total_amount,
+                installments=3,
+                status=TransactionStatusEnum.CHARGEBACK,
+            ),
+        )
+        transactions_by_status[TransactionStatusEnum.CHARGEBACK] = chargeback_transaction
+
+        # --- Reservas de estoque em todos os estados ---
+        reservation_scenarios = [
+            (StockReservationStatusEnum.ACTIVE, OrderStatusEnum.PENDING_PAYMENT, "CAFE-500-UN"),
+            (StockReservationStatusEnum.CONFIRMED, OrderStatusEnum.PAID, "DET-5L-UN"),
+            (StockReservationStatusEnum.RELEASED, OrderStatusEnum.CANCELED, "SAB-BARRA-KIT12"),
+            (StockReservationStatusEnum.EXPIRED, OrderStatusEnum.EXPIRED, "SHAMP-1L-UN"),
+        ]
+        now = datetime.now(UTC).replace(tzinfo=None)
+        for reservation_status, order_status, sku in reservation_scenarios:
+            await get_or_create(
+                session,
+                StockReservation,
+                order_id=orders_by_status[order_status].id,
+                variant_id=variants_by_code[sku].id,
+                defaults=dict(
+                    quantity=1,
+                    status=reservation_status,
+                    expires_at=now + timedelta(minutes=30),
+                    confirmed_at=(
+                        now
+                        if reservation_status == StockReservationStatusEnum.CONFIRMED
+                        else None
+                    ),
+                    released_at=(
+                        now
+                        if reservation_status
+                        in (StockReservationStatusEnum.RELEASED, StockReservationStatusEnum.EXPIRED)
+                        else None
+                    ),
+                ),
             )
 
+        # --- Frete local e remessas em todos os estados ---
+        local_range, _ = await get_or_create(
+            session,
+            LocalCEPRange,
+            cep_start="20000000",
+            cep_end="20999999",
+            defaults=dict(neighborhood="Centro/RJ", shipping_rate=Decimal("12.50")),
+        )
+        shipment_scenarios = [
+            (ShipmentStatusEnum.PREPARING, OrderStatusEnum.PROCESSING),
+            (ShipmentStatusEnum.SHIPPED, OrderStatusEnum.SHIPPED),
+            (ShipmentStatusEnum.DELIVERED, OrderStatusEnum.DELIVERED),
+            (ShipmentStatusEnum.RETURNED, OrderStatusEnum.CANCELED),
+        ]
+        for shipment_status, order_status in shipment_scenarios:
+            order = orders_by_status[order_status]
+            await get_or_create(
+                session,
+                Shipment,
+                order_id=order.id,
+                defaults=dict(
+                    local_cep_id=local_range.id,
+                    provider="SEED-LOGISTICS",
+                    tracking_code=f"TRACK-{shipment_status.value}",
+                    shipping_cost=order.shipping_fee,
+                    status=shipment_status,
+                    shipped_at=(now if shipment_status != ShipmentStatusEnum.PREPARING else None),
+                    delivered_at=(now if shipment_status == ShipmentStatusEnum.DELIVERED else None),
+                ),
+            )
+
+        # --- Reembolsos em todos os estados ---
+        refund_order = orders_by_status[OrderStatusEnum.CANCELED]
+        refund_transaction = transactions_by_status[TransactionStatusEnum.REFUNDED]
+        for refund_status in RefundStatusEnum:
+            await get_or_create(
+                session,
+                Refund,
+                order_id=refund_order.id,
+                reason=f"SEED-{refund_status.value}",
+                defaults=dict(
+                    transaction_id=refund_transaction.id,
+                    amount_refunded=Decimal("5.00"),
+                    status=refund_status,
+                    completed_at=(now if refund_status == RefundStatusEnum.COMPLETED else None),
+                ),
+            )
+
+        # --- Auditoria da integração ERP ---
+        await get_or_create(
+            session,
+            ERPWebhookLog,
+            event_type="stock.updated",
+            related_sku="DET-5L-UN",
+            defaults=dict(
+                payload={"sku": "DET-5L-UN", "stock": 120},
+                status="PROCESSED",
+            ),
+        )
+
+        await session.flush()
+        await validate_seed(session)
         await session.commit()
 
-    print("\nSeed concluído.")
+    print("\nSeed concluído e validado: todas as entidades e enums estão representados.")
     print("\nLogins pra testar:")
     print("  admin      -> admin@atacadaocenter.com.br / Admin123!")
     print("  cliente 1  -> cliente1@example.com / Cliente123!  (já com carrinho e pedidos)")
