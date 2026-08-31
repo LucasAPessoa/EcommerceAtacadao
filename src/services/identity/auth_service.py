@@ -10,8 +10,8 @@ from src.core.sec import (
     verify_token,
 )
 from src.models.identity import User
-from src.repositories.identity.user_repository import UserRepository
 from src.repositories.identity.refresh_token_repository import RefreshTokenRepository
+from src.repositories.identity.user_repository import UserRepository
 from src.schemas.identity.user_schema import Token, UserCreate, UserResponse
 
 
@@ -27,7 +27,10 @@ class AuthService:
         if existing_user:
             raise ValueError("Email already registered")
         
-        default_role = await self.user_repository.get_role_by_name("customer")
+        # A autorização do projeto usa as roles canônicas `admin` e `user`.
+        # Manter o mesmo identificador no cadastro evita criar clientes com
+        # uma role que as dependências require_role não reconhecem.
+        default_role = await self.user_repository.get_role_by_name("user")
         
         if default_role is None:
             raise ValueError("Default user role is not configured")
