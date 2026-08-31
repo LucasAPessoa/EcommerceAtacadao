@@ -30,5 +30,6 @@ router = build_crud_router(
         "delete": "delete_variant",
     },
     not_found_message="Variação do produto não encontrada.",
+    create_roles=["admin"],
     write_roles=["admin"],
 )

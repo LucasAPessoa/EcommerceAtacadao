@@ -30,6 +30,9 @@ class ProductService:
     async def get_product_by_id(self, product_id: UUID) -> Optional[ProductResponseSchema]:
         return await self.repository.get_by_id(product_id)
 
+    async def get_product_by_code(self, code: str) -> Optional[ProductResponseSchema]:
+        return await self.repository.get_by_code(code)
+
     async def update_product(self, product_id: UUID, product_in: ProductUpdateSchema) -> Optional[ProductResponseSchema]:
         # Regra: Não permitir a alteração do SKU raiz (code) via PATCH para não quebrar a sincronia
         if product_in.code is not None:

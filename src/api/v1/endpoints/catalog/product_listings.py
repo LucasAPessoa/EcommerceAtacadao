@@ -30,5 +30,6 @@ router = build_crud_router(
         "delete": "delete_listing",
     },
     not_found_message="Anúncio (listing) não encontrado.",
+    create_roles=["admin"],
     write_roles=["admin"],
 )

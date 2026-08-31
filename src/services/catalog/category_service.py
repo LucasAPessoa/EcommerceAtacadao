@@ -24,8 +24,10 @@ class CategoryService:
         data = category_in.model_dump(exclude_unset=True) 
         return await self.repository.create(data)
     
-    async def list_categories(self) -> list[CategoryResponseSchema]:
-        categories = await self.repository.get_all()
+    async def list_categories(
+        self, skip: int = 0, limit: int = 100
+    ) -> list[CategoryResponseSchema]:
+        categories = await self.repository.get_all(skip=skip, limit=limit)
         return [CategoryResponseSchema.model_validate(category) for category in categories]
 
     async def get_category_by_id(self, category_id: UUID) -> CategoryResponseSchema | None:

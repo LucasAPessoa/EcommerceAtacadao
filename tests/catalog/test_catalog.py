@@ -4,11 +4,10 @@ Tests for catalog: /catalog/products/* and /catalog/categories/*
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from tests.conftest import API_V1_PREFIX, auth_headers
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /catalog/products/
@@ -53,7 +52,7 @@ class TestProductsList:
 
 
 class TestProductByCode:
-    """GET /catalog/products/{code}"""
+    """GET /catalog/products/code/{code}"""
 
     @pytest.mark.asyncio
     async def test_get_product_by_code_succeeds(
@@ -62,11 +61,10 @@ class TestProductByCode:
         # Get any product's code
         listing = await client.get(f"{API_V1_PREFIX}/catalog/products/")
         products = listing.json()["data"]
-        if not products:
-            pytest.skip("No products seeded")
+        assert products, "O catálogo de teste deve conter ao menos um produto"
         code = products[0]["code"]
 
-        resp = await client.get(f"{API_V1_PREFIX}/catalog/products/{code}")
+        resp = await client.get(f"{API_V1_PREFIX}/catalog/products/code/{code}")
         assert resp.status_code == 200, resp.text
         assert resp.json()["data"]["code"] == code
 
@@ -75,7 +73,7 @@ class TestProductByCode:
         self, client: httpx.AsyncClient
     ):
         resp = await client.get(
-            f"{API_V1_PREFIX}/catalog/products/NO-SUCH-CODE-XYZ"
+            f"{API_V1_PREFIX}/catalog/products/code/NO-SUCH-CODE-XYZ"
         )
         assert resp.status_code == 404, resp.text
 

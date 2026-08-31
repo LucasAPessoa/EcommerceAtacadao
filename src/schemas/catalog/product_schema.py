@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from src.schemas.base_schema import SoftDeleteMixinSchema
+from src.schemas.catalog.product_variant_schema import ProductVariantResponseSchema
 
 class ProductBaseSchema(BaseModel):
     bling_id: Optional[int] = None
@@ -52,4 +53,5 @@ class ProductUpdateSchema(BaseModel):
 
 class ProductResponseSchema(ProductBaseSchema, SoftDeleteMixinSchema):
     id: UUID
+    variants: List[ProductVariantResponseSchema]
     model_config = ConfigDict(from_attributes=True)

@@ -30,5 +30,6 @@ router = build_crud_router(
         "delete": "delete_tier",
     },
     not_found_message="Tier não encontrado.",
+    create_roles=["admin"],
     write_roles=["admin"],
 )

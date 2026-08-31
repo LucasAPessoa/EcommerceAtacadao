@@ -30,5 +30,6 @@ router = build_crud_router(
         "delete": "delete_image",
     },
     not_found_message="Imagem do produto não encontrada.",
+    create_roles=["admin"],
     write_roles=["admin"],
 )

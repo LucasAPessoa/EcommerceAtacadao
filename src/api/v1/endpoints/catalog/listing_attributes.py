@@ -30,5 +30,6 @@ router = build_crud_router(
         "delete": "delete_attribute",
     },
     not_found_message="Atributo do anúncio não encontrado.",
+    create_roles=["admin"],
     write_roles=["admin"],
 )

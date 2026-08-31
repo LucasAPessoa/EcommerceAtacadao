@@ -28,5 +28,7 @@ router = build_crud_router(
         "delete": "delete_category",
     },
     not_found_message="Categoria não encontrada.",
+    supports_pagination=True,
+    create_roles=["admin"],
     write_roles=["admin"],
 )
