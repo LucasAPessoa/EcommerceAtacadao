@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -73,7 +73,11 @@ class AddressRepository:
         return address
 
     async def soft_delete(self, address: Address) -> None:
-        address.deleted_at = datetime.now(timezone.utc)
+        # O schema atual usa TIMESTAMP WITHOUT TIME ZONE. Persistimos UTC
+        # normalizado (naive) para não misturar datetimes aware/naive no
+        # asyncpg. A migração futura para timestamptz deve ser feita de forma
+        # global, não apenas nesta operação.
+        address.deleted_at = datetime.now(UTC).replace(tzinfo=None)
         self.session.add(address)
         await self.session.flush()
 
