@@ -22,11 +22,18 @@ class CartRepository:
         self.session = session
 
     def _cart_query(self):
-        return select(Cart).options(
-            selectinload(Cart.items)
-            .selectinload(CartItem.variant)
-            .selectinload(ProductVariant.product)
-            .selectinload(Product.pricing_tiers)
+        return (
+            select(Cart)
+            .options(
+                selectinload(Cart.items)
+                .selectinload(CartItem.variant)
+                .selectinload(ProductVariant.product)
+                .selectinload(Product.pricing_tiers)
+            )
+            # A sessão pode já conter o mesmo carrinho com `items` carregado.
+            # Após add/update/delete, precisamos sobrescrever esse snapshot para
+            # que a resposta HTTP confirme o estado que acabou de ser gravado.
+            .execution_options(populate_existing=True)
         )
 
     async def get_by_user_id(self, user_id: UUID) -> Optional[Cart]:

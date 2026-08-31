@@ -4,11 +4,10 @@ Tests for the cart module: /sales/cart/*
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from tests.conftest import API_V1_PREFIX, auth_headers
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -22,7 +21,7 @@ async def _get_first_variant_id(client: httpx.AsyncClient) -> str:
     for p in products:
         for v in p.get("variants", []):
             return v["id"]
-    pytest.skip("No variants seeded")
+    raise AssertionError("O catálogo de teste deve conter ao menos uma variação ativa")
 
 
 async def _get_or_create_cart(
@@ -34,6 +33,21 @@ async def _get_or_create_cart(
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["data"]
+
+
+async def _ensure_cart_has_item(client: httpx.AsyncClient, token: str) -> dict:
+    """Arrange an item without relying on mutable seed state from prior runs."""
+    cart = await _get_or_create_cart(client, token)
+    if cart["items"]:
+        return cart
+    variant_id = await _get_first_variant_id(client)
+    response = await client.post(
+        f"{API_V1_PREFIX}/sales/cart/items",
+        json={"variant_id": variant_id, "quantity": 1},
+        headers=auth_headers(token),
+    )
+    assert response.status_code in (200, 201), response.text
+    return response.json()["data"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,13 +75,15 @@ class TestGetCart:
     async def test_user_get_or_create_cart(
         self, client: httpx.AsyncClient, user_token: str
     ):
-        """cliente1 has items from seed (2 items)."""
+        """Fetching a cart must not depend on mutable seed contents."""
         resp = await client.get(
             f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token)
         )
         assert resp.status_code == 200, resp.text
         cart = resp.json()["data"]
-        assert len(cart["items"]) >= 1
+        assert "id" in cart
+        assert "items" in cart
+        assert "user_id" in cart
 
     @pytest.mark.asyncio
     async def test_cart_unauthenticated_returns_401(
@@ -210,9 +226,7 @@ class TestUpdateCartItem:
     async def test_update_item_quantity(
         self, client: httpx.AsyncClient, user_token: str
     ):
-        cart = await _get_or_create_cart(client, user_token)
-        if not cart["items"]:
-            pytest.skip("No items in cliente1 cart to update")
+        cart = await _ensure_cart_has_item(client, user_token)
         item_id = cart["items"][0]["id"]
 
         resp = await client.patch(
@@ -230,9 +244,7 @@ class TestUpdateCartItem:
     async def test_update_other_users_item_returns_404(
         self, client: httpx.AsyncClient, user_token: str, user2_token: str
     ):
-        cart = await _get_or_create_cart(client, user_token)
-        if not cart["items"]:
-            pytest.skip("No items in cliente1 cart")
+        cart = await _ensure_cart_has_item(client, user_token)
         item_id = cart["items"][0]["id"]
 
         resp = await client.patch(
@@ -246,9 +258,7 @@ class TestUpdateCartItem:
     async def test_update_item_with_zero_quantity_returns_422(
         self, client: httpx.AsyncClient, user_token: str
     ):
-        cart = await _get_or_create_cart(client, user_token)
-        if not cart["items"]:
-            pytest.skip("No items in cart")
+        cart = await _ensure_cart_has_item(client, user_token)
         item_id = cart["items"][0]["id"]
 
         resp = await client.patch(
@@ -283,8 +293,7 @@ class TestDeleteCartItem:
         target = next(
             (i for i in cart["items"] if i["variant_id"] == variant_id), None
         )
-        if not target:
-            pytest.skip("Item not found in cart after add")
+        assert target is not None, "O item adicionado deve ser devolvido pelo carrinho"
         item_id = target["id"]
 
         resp = await client.delete(
