@@ -346,7 +346,7 @@ class TestAuthSecurity:
         # Use a known-fake secret to produce a malformed signature
         fake = pyjwt.encode(
             {"sub": ADMIN_CREDENTIALS["email"], "type": "access"},
-            "wrong-secret",
+            "wrong-secret-with-at-least-32-bytes",
             algorithm="HS256",
         )
         resp = await client.get(
