@@ -75,3 +75,6 @@ Thumbs.db
 *.patch
 pytest.ini
 requirements-test.txt
+
+# Generated test runner artifacts (human-readable reports remain versioned)
+reports/tests/*.xml
