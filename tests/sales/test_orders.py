@@ -63,8 +63,7 @@ class TestOrderDetail:
             f"{API_V1_PREFIX}/sales/orders/", headers=auth_headers(user_token)
         )
         orders = listing.json()["data"]
-        if not orders:
-            pytest.skip("Nenhum pedido preparado para o usuário")
+        assert orders, "O dataset de teste deve preparar pedidos para o usuário"
 
         order_id = orders[0]["id"]
         response = await client.get(
@@ -86,8 +85,7 @@ class TestOrderDetail:
             f"{API_V1_PREFIX}/sales/orders/", headers=auth_headers(user_token)
         )
         orders = listing.json()["data"]
-        if not orders:
-            pytest.skip("Nenhum pedido preparado para o usuário")
+        assert orders, "O dataset de teste deve preparar pedidos para o usuário"
 
         response = await client.get(
             f"{API_V1_PREFIX}/sales/orders/{orders[0]['id']}",
@@ -129,7 +127,9 @@ class TestOrderImmutability:
             json={"quantity": 2},
             headers=auth_headers(user_token),
         )
-        assert response.status_code == 405
+        # Não existe recurso nem rota de edição direta de itens do pedido.
+        # Para esse caminho inexistente, 404 é a semântica HTTP correta.
+        assert response.status_code == 404
 
 
 class TestCancelOrder:
@@ -144,8 +144,7 @@ class TestCancelOrder:
             (order for order in listing.json()["data"] if order["status"] == "PENDING_PAYMENT"),
             None,
         )
-        if pending is None:
-            pytest.skip("Nenhum pedido pendente preparado para cancelamento")
+        assert pending is not None, "O dataset deve preparar um pedido pendente cancelável"
 
         response = await client.post(
             f"{API_V1_PREFIX}/sales/orders/{pending['id']}/cancel",

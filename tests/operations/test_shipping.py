@@ -4,11 +4,10 @@ Tests for the shipping module: /operations/shipping/calculate
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
-from tests.conftest import API_V1_PREFIX, auth_headers
-
+from tests.conftest import API_V1_PREFIX
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -20,7 +19,7 @@ async def _get_first_variant_id(client: httpx.AsyncClient) -> str:
     for p in resp.json()["data"]:
         for v in p.get("variants", []):
             return v["id"]
-    pytest.skip("No variants seeded")
+    raise AssertionError("O catálogo de teste deve conter ao menos uma variação ativa")
 
 
 def make_shipping_payload(variant_id: str, dest_zip: str = "20040020") -> dict:
