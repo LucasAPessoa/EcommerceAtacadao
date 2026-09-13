@@ -26,7 +26,11 @@ class Transaction(Base, TimestampMixin):
     order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orders.id"))
 
     payment_method: Mapped[PaymentMethodEnum] = mapped_column(SQLEnum(PaymentMethodEnum))
+    gateway_provider: Mapped[str] = mapped_column(String(40), default="LOCAL")
     gateway_ref_id: Mapped[Optional[str]] = mapped_column(String(100), index=True)
+    gateway_payment_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
+    checkout_url: Mapped[Optional[str]] = mapped_column(Text)
+    gateway_status_detail: Mapped[Optional[str]] = mapped_column(String(100))
 
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     installments: Mapped[int] = mapped_column(Integer, default=1)
@@ -36,6 +40,7 @@ class Transaction(Base, TimestampMixin):
         SQLEnum(TransactionStatusEnum), default=TransactionStatusEnum.PENDING
     )
     paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    webhook_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     order: Mapped["Order"] = relationship(back_populates="transactions")
 

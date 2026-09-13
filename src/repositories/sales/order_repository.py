@@ -65,6 +65,20 @@ class OrderRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_transaction_for_order(self, order_id: UUID) -> Optional[Transaction]:
+        query = select(Transaction).where(Transaction.order_id == order_id).with_for_update()
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_transaction_for_mercado_pago_order(self, order_id: UUID) -> Optional[Transaction]:
+        query = (
+            select(Transaction)
+            .where(Transaction.order_id == order_id, Transaction.gateway_provider == "MERCADO_PAGO")
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_cart_for_checkout(self, user_id: UUID) -> Optional[Cart]:
         query = (
             select(Cart)
@@ -252,6 +266,36 @@ class OrderRepository:
             reservation.status = StockReservationStatusEnum.RELEASED
             reservation.released_at = released_at
             self.session.add(reservation)
+        await self.session.flush()
+
+    async def confirm_active_reservations(self, order_id: UUID, confirmed_at: datetime) -> None:
+        query = (
+            select(StockReservation)
+            .where(
+                StockReservation.order_id == order_id,
+                StockReservation.status == StockReservationStatusEnum.ACTIVE,
+            )
+            .with_for_update()
+        )
+        reservations = list((await self.session.execute(query)).scalars().all())
+        variant_ids = [reservation.variant_id for reservation in reservations]
+        variants = await self.lock_variants(variant_ids)
+        variants_by_id = {variant.id: variant for variant in variants}
+        for reservation in reservations:
+            variant = variants_by_id.get(reservation.variant_id)
+            if (
+                variant is None
+                or reservation.expires_at <= confirmed_at
+                or variant.stock_quantity < reservation.quantity
+            ):
+                raise ValueError(
+                    "Reserva expirada ou estoque indisponível para confirmar pagamento."
+                )
+        for reservation in reservations:
+            variant = variants_by_id[reservation.variant_id]
+            variant.stock_quantity -= reservation.quantity
+            reservation.status = StockReservationStatusEnum.CONFIRMED
+            reservation.confirmed_at = confirmed_at
         await self.session.flush()
 
     async def update_status(

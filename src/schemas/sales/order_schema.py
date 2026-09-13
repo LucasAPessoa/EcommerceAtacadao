@@ -42,6 +42,10 @@ class OrderTransactionResponseSchema(BaseModel):
     installments: int
     status: TransactionStatusEnum
     gateway_ref_id: Optional[str] = None
+    gateway_payment_id: Optional[str] = None
+    gateway_provider: str
+    checkout_url: Optional[str] = None
+    gateway_status_detail: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

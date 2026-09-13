@@ -2,32 +2,32 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.exc import IntegrityError
-from src.core.config import settings
 from fastapi.responses import JSONResponse
-
-logger = logging.getLogger("ecommerce_atacadao")
+from sqlalchemy.exc import IntegrityError
 
 from src.api.v1.endpoints.router import api_router as router
+from src.core.config import settings
+
+logger = logging.getLogger("ecommerce_atacadao")
 
 DATABASE_ERROR_MESSAGES = {
     "UniqueViolationError": "Já existe um registro com estes dados no sistema.",
     "ForeignKeyViolationError": "O registro associado não existe ou foi removido.",
     "NotNullViolationError": "Um campo obrigatório não foi preenchido no banco de dados.",
-    "CheckViolationError": "Os dados fornecidos não atendem às regras de validação do banco."
+    "CheckViolationError": "Os dados fornecidos não atendem às regras de validação do banco.",
 }
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="API Orquestradora para E-commerce e Integrações",
-    docs_url="/api/docs",   # Move o Swagger para uma rota mais limpa
+    docs_url="/api/docs",  # Move o Swagger para uma rota mais limpa
     redoc_url="/api/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # TODO: Ajustar para permitir apenas origens confiáveis em produção
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,6 +36,7 @@ app.add_middleware(
 # ==========================================
 # TRATAMENTO DE ERROS GLOBAL (BaseResponse)
 # ==========================================
+
 
 @app.exception_handler(IntegrityError)
 async def global_error_handler(request: Request, exc: IntegrityError):
@@ -59,18 +60,15 @@ async def global_error_handler(request: Request, exc: IntegrityError):
             "message": friendly_message,
             "data": None,
             "errors": [friendly_message],
-        }
+        },
     )
+
 
 # Health check endpoint
 @app.get("/health", tags=["System"])
 async def health_check():
     """Retorna o status vital da API."""
-    return {
-        "status": "online",
-        "project": settings.PROJECT_NAME,
-        "version": settings.VERSION
-    }
+    return {"status": "online", "project": settings.PROJECT_NAME, "version": settings.VERSION}
 
 
 # from src.api.v1.router import api_router
