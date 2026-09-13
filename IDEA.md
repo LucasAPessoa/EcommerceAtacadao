@@ -1,87 +1,97 @@
-# Instruções do Code Agent - E-commerce Atacadão
+# Skill do projeto EcommerceAtacadao
 
-## Contexto do Projeto
-Você é um AI Coding Assistant focado no projeto **EcommerceAtacadao**. 
-Este é um backend de e-commerce robusto e escalável construído com **FastAPI**, seguindo uma arquitetura em camadas (Layered Architecture) orientada a domínios (Catálogo, Identidade, Operações, Vendas).
+Este arquivo é a porta de entrada legada para a skill canônica do projeto:
 
-## Escopo de Negócio (Proposta Comercial)
-**Equipe de Desenvolvimento:** Lucas de Almeida Pessoa & Paulo Renato Peris Rosa
-**Cliente:** Priscilla
-**Prazo Estimado:** 8 semanas (Fluxo contínuo até deploy e homologação)
+- [SKILL.md](skills/ecommerce-atacadao/SKILL.md)
+- [Arquitetura e convenções](skills/ecommerce-atacadao/references/architecture.md)
+- [Domínios e escopo funcional](skills/ecommerce-atacadao/references/domains.md)
+- [Superfície HTTP e autorização](skills/ecommerce-atacadao/references/api-surface.md)
+- [Checkout transacional](skills/ecommerce-atacadao/references/checkout.md)
+- [Desenvolvimento e validação](skills/ecommerce-atacadao/references/development.md)
+- [Equipe de coding agents](skills/ecommerce-atacadao/references/agents.md)
 
-**Objetivo do Projeto:**
-Implementação de um sistema de comércio eletrônico completamente integrado ao ERP Bling e ao gateway de pagamentos Mercado Pago. O foco principal é viabilizar a automatização do controle de inventário, o processamento seguro de vendas e a logística de despacho regional e nacional.
+Ao trabalhar neste repositório, carregue primeiro a skill `ecommerce-atacadao`.
+Leia apenas as referências indicadas para a tarefa atual, mas leia cada arquivo
+selecionado por completo antes de alterar código.
 
-**Escopo Funcional de Engenharia:**
-- **Autenticação e Segurança:** Criação de ambiente restrito para clientes (Cadastro/Login) com criptografia padrão de mercado.
-- **Gateway de Pagamentos:** Integração com o Mercado Pago para habilitar transações via Pix, Cartão de Crédito e Boleto Bancário.
-- **Logística de Frete Nacional:** Integração automatizada com Correios e soluções de cubagem/coleta privada (Melhor Envio / Loggi) para cálculo em tempo real de custos e prazos de postagem.
-- **Logística de Entrega Própria (Regional):** Estruturação de inteligência de frete customizada por bairros baseada em tabelas rígidas de faixas de CEP para evitar problemas de digitação e garantir tarifas exatas para serviços de motoboy.
-- **Sincronização Bidirecional ERP Bling:** Importação automatizada do catálogo de produtos e sincronização assíncrona de inventário. Configuração de Webhooks para trâmite automático de dados fiscais essenciais à emissão posterior de Notas Fiscais (NF).
-- **Módulo de Carrinho:** Persistência de itens, revisão dinâmica de valores e fluxo de checkout sem fricção.
-- **Painéis Administrativos (Dashboards):** Painel de controle integrado para consolidação de anúncios do Bling e gerenciamento logístico (status de pacotes, agendamentos de coletas e geração simplificada de etiquetas de envio).
-- **Preços de Varejo e Atacado:** Os preços praticados serão diferentes a depender da quantidade de produtos comprados (Lógica essencial para o serviço de catálogo e carrinho).
+## Produto
 
-**Garantia e Condições:**
-- Após o deploy final, haverá garantia assistida de 90 dias cobrindo correções de bugs e estabilização de fluxos.
-- Custos operacionais (infraestrutura em nuvem, taxas Mercado Pago, assinaturas ERP) e fornecimento de chaves de API/tabelas de CEP são obrigações da Contratante.
+O EcommerceAtacadao é um backend B2C/B2B de atacado em FastAPI, PostgreSQL e
+SQLAlchemy assíncrono. O produto pretende conectar catálogo e estoque do Bling,
+pagamentos do Mercado Pago e logística nacional/regional, preservando preços de
+varejo e atacado e um checkout seguro.
 
-## Stack Tecnológico e Dependências
-**Linguagem Base e Ferramentas:**
-- **Linguagem:** Python 3.11+
-- **Gerenciamento de Dependências:** `uv`
-- **Build System:** `hatchling`
+Os domínios são:
 
-**Dependências de Produção:**
-- `fastapi` (>=0.111.0): Framework Web de alta performance.
-- `uvicorn[standard]` (>=0.30.0): Servidor ASGI.
-- `pydantic[email]` (>=2.7.0): Validação e Serialização de dados (V2).
-- `pydantic-settings` (>=2.2.0): Gestão segura de variáveis de ambiente.
-- `python-multipart` (>=0.0.9): Processamento de formulários e upload de ficheiros.
-- `sqlalchemy` (>=2.0.30): ORM (Sintaxe 2.0).
-- `alembic` (>=1.13.1): Controlo de versões da base de dados (Migrations).
-- `asyncpg` (>=0.29.0): Driver assíncrono nativo para PostgreSQL.
-- `pyjwt` (>=2.8.0): Geração e validação de tokens JWT.
-- `passlib[bcrypt]` (>=1.7.4): Hashing seguro de palavras-passe.
+- **Identidade:** cadastro, login, JWT de acesso, rotação/revogação de refresh
+  tokens, roles `admin`/`user`, perfis e endereços pertencentes ao usuário.
+- **Catálogo:** categorias, produtos, variações/SKUs, imagens, faixas de preço,
+  avaliações, perguntas e estruturas de anúncio de marketplace.
+- **Vendas:** carrinho persistente, cupons, preview e confirmação do checkout,
+  pedidos, snapshots, transações, reservas de estoque e histórico de status.
+- **Operações:** cotação pelo Melhor Envio e modelos para frete local, remessas,
+  reembolsos e auditoria de webhooks ERP.
 
-**Dependências de Desenvolvimento (Testes e Qualidade):**
-- `pytest` (>=8.2.0) e `pytest-asyncio` (>=0.23.6): Framework de testes unitários e assíncronos.
-- `ruff` (>=0.4.4): Linter e Formatter super-rápido (regras E, F, I).
-- `mypy` (>=1.10.0): Verificação rigorosa de tipagem estática.
+## Estado implementado
 
-## Arquitetura e Fluxo de Dados
-A separação de responsabilidades é estrita. Uma requisição deve fluir da seguinte maneira:
-`Router (FastAPI) -> Service (Business Logic) -> Repository (Data Access) -> DB`
+- API versionada sob `/api/v1`, documentação em `/api/docs` e health check em
+  `/health`.
+- Autenticação JWT com access/refresh separados, refresh persistido e logout por
+  revogação.
+- Catálogo público para leitura; mutações administrativas, exceto criação
+  autenticada de perguntas e avaliações.
+- Carrinho isolado por usuário, com união de SKU repetido e resposta recarregada
+  após cada mutação.
+- Frete público calculado pelo Melhor Envio a partir dos dados logísticos do SKU.
+- Checkout em duas fases (`preview`/`confirm`) com total recalculado no servidor,
+  idempotência, locks, preço atacadista, snapshots e reservas temporárias.
+- Consulta de pedidos isolada por proprietário; administradores veem todos.
+  Somente pedidos aguardando pagamento podem ser cancelados diretamente.
+- Migrações Alembic, reset local protegido, seed determinístico e suíte de testes
+  unitários e black-box.
 
-- **`src/models/`**: Exclusivo para Modelos SQLAlchemy (definição de tabelas do banco). Não adicione lógica de validação aqui.
-- **`src/schemas/`**: Exclusivo para Modelos Pydantic. Define os contratos de entrada (requests) e saída (responses).
-- **`src/repositories/`**: Centraliza todas as queries de banco de dados. Nunca acesse a sessão do DB diretamente no Controller.
-- **`src/services/`**: Lógica de negócio. Não deve conhecer o framework web (não importe `Request` ou lance `HTTPException` do FastAPI aqui).
-- **`src/api/v1/endpoints/`**: Controladores (Routers). Sua única função é receber a requisição, chamar o Service injetado via `Depends()`, e retornar a resposta.
+## Escopo previsto, ainda não implementado ponta a ponta
 
-## Padrões de Código e Regras Estritas
+- Sincronização bidirecional real com Bling e processamento de seus webhooks.
+- Cobrança, callbacks e conciliação reais do Mercado Pago para Pix, cartão e
+  boleto.
+- Entrega regional por faixas de CEP, Loggi/Correios diretos, etiquetas e coleta.
+- Fluxos administrativos de remessa, reembolso, chargeback e nota fiscal.
+- Dashboards e frontend administrativo/cliente.
+- Workers, filas, agendamentos e observabilidade de produção.
 
-### 1. Respostas Padronizadas (BaseResponse)
-- **TODOS** os endpoints devem retornar respostas envelopadas no modelo genérico `BaseResponse` (localizado em `src/schemas/response_schema.py`).
-- O schema esperado é estrito: `{"status": "success" | "error", "message": "string", "data": <payload>, "errors": [...]}`.
-- Nunca retorne objetos puros ou listas soltas. Enclausure-os no campo `data` do `BaseResponse`.
+Modelos ou dados de seed para esses conceitos não significam que o fluxo externo
+esteja pronto. Antes de prometer uma capacidade, confirme router, service,
+repository, integração e testes correspondentes.
 
-### 2. Tratamento Global de Erros
-- Respeite o sistema de Exception Handlers globais implementado no `src/main.py`.
-- Erros de validação de payload (`RequestValidationError`), erros HTTP (`HTTPException`) e exceções não tratadas são formatados automaticamente para o padrão `BaseResponse`.
-- Na camada de serviço, prefira levantar exceções de domínio claras ou usar blocos `try/except` que repassem mensagens legíveis para a camada de controle.
+## Regras que nunca podem ser enfraquecidas
 
-### 3. Idioma e Nomenclatura
-- **Código:** Nomes de variáveis, classes, funções, arquivos e tabelas do banco devem ser **100% em Inglês** (ex: `category_service.py`, `is_active`, `create_order`).
-- **Comentários, Docstrings e Commits:** Devem ser em **Português**, garantindo a clareza para a equipa local.
-- Padrões:
-  - Classes: `PascalCase` (ex: `CategoryRepository`).
-  - Funções/Variáveis/Arquivos: `snake_case` (ex: `get_category_by_id`).
+1. O cliente nunca é autoridade sobre preço, desconto, estoque ou itens do
+   pedido. O servidor parte do carrinho persistido e recalcula tudo.
+2. Valores monetários usam `Decimal`; pedidos mantêm snapshots imutáveis.
+3. Confirmação de checkout é idempotente por `(user_id, Idempotency-Key)` e
+   atômica dentro de uma sessão.
+4. Carrinho e SKUs são bloqueados antes da validação final de estoque; reservas
+   ativas e não expiradas reduzem disponibilidade.
+5. Recursos de usuário são consultados pelo par recurso/proprietário; não vaze a
+   existência de dados de outro cliente.
+6. Mutações administrativas devem falhar na autorização antes da persistência.
+7. Alterações de modelos exigem migração Alembic revisada.
+8. Datas persistidas seguem UTC naive enquanto o schema usar
+   `TIMESTAMP WITHOUT TIME ZONE`.
+9. Não exponha segredos nem detalhes crus do driver/banco nas respostas.
+10. Não introduza `pytest.skip` para esconder fixture incompleta; prepare a
+    pré-condição ou falhe explicitamente.
 
-### 4. Boas Práticas Pythonicas
-- **Type Hints:** É estritamente obrigatório tipar parâmetros e retornos de todas as funções/métodos.
-- **Injeção de Dependências:** Use extensivamente o sistema do FastAPI (`Depends()`) para instanciar repositórios e serviços, garantindo a facilidade de testes unitários.
+## Convenções
 
-### 5. Banco de Dados e Migrações
-- Quaisquer alterações nos arquivos em `src/models/` **exigem** a geração de uma nova migration via Alembic.
-- Comando padrão esperado: `alembic revision --autogenerate -m "descrição da mudança em inglês"`.
+- Fluxo: `router -> service -> repository -> banco/integração`.
+- Identificadores e código em inglês; comentários, docstrings e comunicação do
+  projeto em português.
+- Use type hints, Pydantic v2, SQLAlchemy 2 assíncrono e injeção via `Depends`.
+- Respostas de sucesso usam `BaseResponse`; preserve o status HTTP sem esconder
+  conflitos, validações, indisponibilidade externa ou ausência de recursos.
+- Commits seguem Conventional Commits e devem ser tão atômicos quanto possível.
+
+O detalhamento operacional e as exceções atuais estão nas referências da skill;
+este arquivo não substitui a leitura delas quando a tarefa tocar o tema.

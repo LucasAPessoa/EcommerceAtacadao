@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ecommerce Atacadão"
+  short_description: "Desenvolver e validar o backend do Atacadão"
+  default_prompt: "Use $ecommerce-atacadao para implementar esta mudança respeitando a arquitetura e as invariantes transacionais do projeto."
