@@ -16,6 +16,33 @@ uv run uvicorn src.main:app --reload
 
 A documentação OpenAPI fica disponível em `http://127.0.0.1:8000/api/docs`.
 
+## Deploy na Vercel
+
+A Vercel detecta a aplicação FastAPI por `src.main:app`, declarado em
+`pyproject.toml`. Importe este repositório como um projeto Python/FastAPI e
+configure as variáveis de ambiente no projeto da API; não envie `.env` ao Git.
+
+Além das variáveis de identidade, banco, Melhor Envio e Mercado Pago presentes
+em `.env.example`, configure `CORS_ALLOWED_ORIGINS` com a origem HTTPS exata do
+projeto de frontend, sem barra final. Exemplo:
+
+```env
+CORS_ALLOWED_ORIGINS=https://loja.exemplo.com
+```
+
+O banco PostgreSQL deve ser externo e acessível pela `DATABASE_URL`. Execute
+`uv run alembic upgrade head` contra esse banco em um ambiente de operação ou
+CI antes de promover a API: funções serverless não devem aplicar migrations
+durante uma requisição. Depois, configure o frontend com a URL pública da API
+incluindo `/api/v1` e use essa mesma API pública no webhook do Mercado Pago.
+
+O Checkout Pro exige estas URLs públicas HTTPS:
+
+```env
+MERCADO_PAGO_NOTIFICATION_URL=https://api.exemplo.com/api/v1/sales/checkout/mercado-pago/webhook
+MERCADO_PAGO_FRONTEND_BASE_URL=https://loja.exemplo.com
+```
+
 ## Checkout transacional
 
 O checkout utiliza exclusivamente o carrinho persistido do usuário. O

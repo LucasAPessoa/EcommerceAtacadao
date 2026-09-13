@@ -43,6 +43,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
+[tool.vercel]
+entrypoint = "src.main:app"
+
 # Configuração do Linter (Ruff)
 [tool.ruff]
 line-length = 100
