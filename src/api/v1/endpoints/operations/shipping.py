@@ -5,9 +5,12 @@ from src.core.config import settings
 from src.core.db import get_db
 from src.integrations.melhor_envio.client import MelhorEnvioError
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
-from src.schemas.operations.shipping_schema import ShippingCalculateRequestSchema, ShippingQuoteSchema
+from src.schemas.operations.shipping_schema import (
+    ShippingCalculateRequestSchema,
+    ShippingQuoteSchema,
+)
 from src.schemas.response_schema import BaseResponse
-from src.services.operations.shipping_service import ShippingService
+from src.services.operations.shipping_service import ShippingQuoteUnavailableError, ShippingService
 
 router = APIRouter(prefix="/shipping", tags=["Shipping"])
 
@@ -33,6 +36,10 @@ async def calculate_shipping(
             items=request_in.items,
         )
         return BaseResponse(status="success", data=data)
+    except ShippingQuoteUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except MelhorEnvioError as e:

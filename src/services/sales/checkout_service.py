@@ -21,6 +21,7 @@ from src.schemas.sales.checkout_schema import (
 )
 from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.operations.shipping_service import ShippingService
+from src.services.sales.pricing import select_unit_price
 
 MONEY_QUANTUM = Decimal("0.01")
 
@@ -59,6 +60,26 @@ class CheckoutService:
         return tuple(sorted((str(item.variant_id), item.quantity) for item in cart.items))
 
     @staticmethod
+    def _shipping_fingerprint(
+        lines: Iterable[Dict[str, Any]],
+    ) -> Tuple[Tuple[str, int, str, str, str, str, str], ...]:
+        """Representa os dados que determinam a cotação antes da seção bloqueada."""
+        return tuple(
+            sorted(
+                (
+                    str(line["variant_id"]),
+                    line["quantity"],
+                    str(line["unit_price_snapshot"]),
+                    str(line["logistics_snapshot"]["weight_kg"]),
+                    str(line["logistics_snapshot"]["height_cm"]),
+                    str(line["logistics_snapshot"]["width_cm"]),
+                    str(line["logistics_snapshot"]["length_cm"]),
+                )
+                for line in lines
+            )
+        )
+
+    @staticmethod
     def _ensure_cart(cart: Optional[Cart]) -> Cart:
         if cart is None or not cart.items:
             raise ValueError("O carrinho está vazio.")
@@ -68,14 +89,8 @@ class CheckoutService:
     def _select_unit_price(
         variant: ProductVariant, product_quantity: int
     ) -> Tuple[Decimal, Optional[int]]:
-        base_price = _money(variant.base_price)
-        applicable = [
-            tier for tier in variant.product.pricing_tiers if tier.min_quantity <= product_quantity
-        ]
-        if not applicable:
-            return base_price, None
-        tier = max(applicable, key=lambda current: current.min_quantity)
-        return _money(tier.unit_price), tier.min_quantity
+        unit_price, tier_quantity = select_unit_price(variant, product_quantity)
+        return _money(unit_price), tier_quantity
 
     def _build_lines(
         self,
@@ -93,7 +108,13 @@ class CheckoutService:
         subtotal = Decimal("0.00")
         for item in cart.items:
             variant = variants_by_id.get(item.variant_id) if variants_by_id else item.variant
-            if variant is None or not variant.is_active or not variant.product.is_active:
+            if (
+                variant is None
+                or not variant.is_active
+                or not variant.product.is_active
+                or getattr(variant, "deleted_at", None) is not None
+                or getattr(variant.product, "deleted_at", None) is not None
+            ):
                 raise ValueError("Um dos produtos do carrinho não está mais disponível.")
 
             unit_price, tier_quantity = self._select_unit_price(
@@ -244,7 +265,9 @@ class CheckoutService:
         address = await self.repository.get_address_for_user(checkout_in.address_id, user_id)
         if address is None:
             raise ValueError("Endereço não encontrado para este usuário.")
+        initial_address_snapshot = _address_snapshot(address)
         initial_lines, _ = self._build_lines(cart)
+        initial_shipping_fingerprint = self._shipping_fingerprint(initial_lines)
         quotes = await self._shipping_options(address, initial_lines)
         selected_quote = next(
             (quote for quote in quotes if quote.service_id == checkout_in.shipping_service_id),
@@ -274,6 +297,10 @@ class CheckoutService:
             raise ValueError("Um dos produtos do carrinho não está mais disponível.")
 
         lines, subtotal = self._build_lines(locked_cart, variants_by_id)
+        if self._shipping_fingerprint(lines) != initial_shipping_fingerprint:
+            raise ValueError(
+                "Os dados do produto mudaram durante o checkout. Revise e tente novamente."
+            )
         now = datetime.now(UTC).replace(tzinfo=None)
         for line in lines:
             variant = variants_by_id[line["variant_id"]]
@@ -288,6 +315,10 @@ class CheckoutService:
         address = await self.repository.get_address_for_user(checkout_in.address_id, user_id)
         if address is None:
             raise ValueError("Endereço não encontrado para este usuário.")
+        if _address_snapshot(address) != initial_address_snapshot:
+            raise ValueError(
+                "O endereço foi alterado durante o checkout. Revise e tente novamente."
+            )
         coupon = await self._coupon(checkout_in.coupon_code)
         shipping_fee = _money(selected_quote.price)
         discount = self._calculate_discount(coupon, subtotal, shipping_fee)

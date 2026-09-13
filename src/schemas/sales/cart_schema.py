@@ -22,13 +22,14 @@ class CartItemResponseSchema(BaseModel):
     variant_id: UUID
     quantity: int
     variant: ProductVariantResponseSchema
+    unit_price: Decimal
 
     model_config = ConfigDict(from_attributes=True)
 
     @computed_field
     @property
     def subtotal(self) -> Decimal:
-        return self.variant.base_price * self.quantity
+        return self.unit_price * self.quantity
 
 
 class CartResponseSchema(TimestampMixinSchema):

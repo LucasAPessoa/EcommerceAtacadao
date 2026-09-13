@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Optional
 from uuid import UUID
 
@@ -5,15 +6,46 @@ from src.repositories.catalog.product_variant_repository import ProductVariantRe
 from src.repositories.sales.cart_repository import CartRepository
 from src.schemas.sales.cart_schema import (
     CartItemCreateSchema,
+    CartItemResponseSchema,
     CartItemUpdateSchema,
     CartResponseSchema,
 )
+from src.services.sales.pricing import select_unit_price
 
 
 class CartService:
     def __init__(self, repository: CartRepository, variant_repository: ProductVariantRepository):
         self.repository = repository
         self.variant_repository = variant_repository
+
+    @staticmethod
+    def _response(cart) -> CartResponseSchema:
+        """Monta totais informativos com a mesma faixa atacadista usada no checkout."""
+        quantities_by_product = defaultdict(int)
+        for item in cart.items:
+            quantities_by_product[item.variant.product_id] += item.quantity
+
+        items = []
+        for item in cart.items:
+            unit_price, _ = select_unit_price(
+                item.variant, quantities_by_product[item.variant.product_id]
+            )
+            items.append(
+                CartItemResponseSchema(
+                    id=item.id,
+                    variant_id=item.variant_id,
+                    quantity=item.quantity,
+                    variant=item.variant,
+                    unit_price=unit_price,
+                )
+            )
+        return CartResponseSchema(
+            id=cart.id,
+            user_id=cart.user_id,
+            created_at=cart.created_at,
+            updated_at=cart.updated_at,
+            items=items,
+        )
 
     async def _get_or_create_cart(self, user_id: UUID):
         cart = await self.repository.get_by_user_id(user_id)
@@ -28,7 +60,7 @@ class CartService:
         # síncrono (que quebra em async session com MissingGreenlet).
         if cart is not None:
             cart = await self.repository.get_by_id(cart.id) or cart
-        return CartResponseSchema.model_validate(cart)
+        return self._response(cart)
 
     async def add_item(self, user_id: UUID, item_in: CartItemCreateSchema) -> CartResponseSchema:
         """
@@ -52,7 +84,7 @@ class CartService:
             await self.repository.add_item(cart.id, item_in.variant_id, item_in.quantity)
 
         updated_cart = await self.repository.get_by_id(cart.id)
-        return CartResponseSchema.model_validate(updated_cart)
+        return self._response(updated_cart)
 
     async def update_item_quantity(
         self, user_id: UUID, item_id: UUID, item_in: CartItemUpdateSchema
@@ -65,7 +97,7 @@ class CartService:
         await self.repository.update_item_quantity(item, item_in.quantity)
 
         updated_cart = await self.repository.get_by_id(cart.id)
-        return CartResponseSchema.model_validate(updated_cart)
+        return self._response(updated_cart)
 
     async def remove_item(self, user_id: UUID, item_id: UUID) -> Optional[CartResponseSchema]:
         cart = await self.repository.get_by_user_id(user_id)
@@ -76,7 +108,7 @@ class CartService:
         await self.repository.remove_item(item)
 
         updated_cart = await self.repository.get_by_id(cart.id)
-        return CartResponseSchema.model_validate(updated_cart)
+        return self._response(updated_cart)
 
     async def clear_cart(self, user_id: UUID) -> CartResponseSchema:
         """Esvazia o carrinho (remove os itens, mantém o carrinho do usuário)."""
@@ -84,4 +116,4 @@ class CartService:
         await self.repository.clear_items(cart.id)
 
         updated_cart = await self.repository.get_by_id(cart.id)
-        return CartResponseSchema.model_validate(updated_cart)
+        return self._response(updated_cart)

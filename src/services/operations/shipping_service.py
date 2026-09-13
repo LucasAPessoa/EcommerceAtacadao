@@ -1,4 +1,5 @@
 from decimal import Decimal
+from math import isfinite
 from typing import List, Optional
 
 from src.integrations.melhor_envio.client import MelhorEnvioClient
@@ -6,11 +7,9 @@ from src.integrations.melhor_envio.schemas import MelhorEnvioProductItem, Melhor
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
 from src.schemas.operations.shipping_schema import ShippingCalculateItemSchema, ShippingQuoteSchema
 
-# Fallback caso a variação não tenha dimensões/peso cadastrados — evita
-# quebrar a cotação, mas o ideal é sempre ter esses dados reais no cadastro
-# de cada ProductVariant (weight_kg/height_cm/width_cm/length_cm).
-_FALLBACK_WEIGHT_KG = 0.3
-_FALLBACK_DIMENSION_CM = 11.0
+
+class ShippingQuoteUnavailableError(ValueError):
+    """Não há serviço de frete utilizável para a simulação solicitada."""
 
 
 class ShippingService:
@@ -32,12 +31,26 @@ class ShippingService:
         (ex: OrderService, que já buscou a variante pra montar o pedido)
         não precisar buscar de novo só pra calcular o frete.
         """
+        dimensions = {
+            "largura": variant.width_cm,
+            "altura": variant.height_cm,
+            "comprimento": variant.length_cm,
+            "peso": variant.weight_kg,
+        }
+        if any(
+            value is None or not isfinite(float(value)) or value <= 0
+            for value in dimensions.values()
+        ):
+            raise ShippingQuoteUnavailableError(
+                "A variação não possui dados logísticos válidos para cotação."
+            )
+
         return MelhorEnvioProductItem(
             id=str(variant.id),
-            width=variant.width_cm if variant.width_cm is not None else _FALLBACK_DIMENSION_CM,
-            height=variant.height_cm if variant.height_cm is not None else _FALLBACK_DIMENSION_CM,
-            length=variant.length_cm if variant.length_cm is not None else _FALLBACK_DIMENSION_CM,
-            weight=variant.weight_kg if variant.weight_kg is not None else _FALLBACK_WEIGHT_KG,
+            width=variant.width_cm,
+            height=variant.height_cm,
+            length=variant.length_cm,
+            weight=variant.weight_kg,
             insurance_value=round(
                 float(
                     insurance_unit_price
@@ -54,9 +67,11 @@ class ShippingService:
     ) -> List[MelhorEnvioProductItem]:
         products: List[MelhorEnvioProductItem] = []
         for item in items:
-            variant = await self.variant_repository.get_by_id(item.variant_id)
+            variant = await self.variant_repository.get_active_for_shipping(item.variant_id)
             if not variant:
-                raise ValueError(f"Variação {item.variant_id} não encontrada.")
+                raise ShippingQuoteUnavailableError(
+                    "Variação não encontrada ou indisponível para cotação."
+                )
             products.append(self.build_product_item(variant, item.quantity))
         return products
 
@@ -72,6 +87,10 @@ class ShippingService:
     ) -> List[ShippingQuoteSchema]:
         quotes = await self.client.calculate(origin_zip_code, destination_zip_code, products)
         valid = self._valid_quotes(quotes)
+        if not valid:
+            raise ShippingQuoteUnavailableError(
+                "Não há opção de frete disponível para este endereço."
+            )
 
         result = [
             ShippingQuoteSchema(
@@ -83,7 +102,7 @@ class ShippingService:
             )
             for q in valid
         ]
-        return sorted(result, key=lambda q: q.price)
+        return sorted(result, key=lambda quote: quote.price)
 
     async def calculate_quotes(
         self,
@@ -112,8 +131,6 @@ class ShippingService:
     ) -> float:
         """Usado quando só se tem variant_id+quantity (ex: endpoint público de cotação)."""
         quotes = await self.calculate_quotes(origin_zip_code, destination_zip_code, items)
-        if not quotes:
-            raise ValueError("Não foi possível calcular o frete para este endereço.")
         return quotes[0].price
 
     async def get_cheapest_fee_for_products(
@@ -128,6 +145,4 @@ class ShippingService:
         evita buscar a mesma variante duas vezes.
         """
         quotes = await self._quotes_for_products(origin_zip_code, destination_zip_code, products)
-        if not quotes:
-            raise ValueError("Não foi possível calcular o frete para este endereço.")
         return quotes[0].price

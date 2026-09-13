@@ -107,9 +107,7 @@ def test_checkout_calculates_every_discount_type(
         expires_at=None,
     )
 
-    discount = _service()._calculate_discount(
-        coupon, Decimal(subtotal), Decimal(shipping)
-    )
+    discount = _service()._calculate_discount(coupon, Decimal(subtotal), Decimal(shipping))
 
     assert discount == Decimal(expected)
 
@@ -273,4 +271,122 @@ async def test_confirm_rejects_quantity_already_reserved() -> None:
         await service.confirm(user_id, checkout_in, uuid4())
 
     session.rollback.assert_awaited_once()
+    repository.create_checkout_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_confirm_requires_new_preview_when_logistics_change_after_quote() -> None:
+    user_id = uuid4()
+    address_id = uuid4()
+    quoted_variant = _variant(stock=5)
+    locked_variant = _variant(stock=5)
+    locked_variant.id = quoted_variant.id
+    locked_variant.product_id = quoted_variant.product_id
+    locked_variant.product = quoted_variant.product
+    locked_variant.weight_kg = 2.0
+    cart = SimpleNamespace(
+        items=[SimpleNamespace(variant_id=quoted_variant.id, variant=quoted_variant, quantity=2)]
+    )
+    address = SimpleNamespace(
+        id=address_id,
+        zip_code="01001000",
+        street="Rua A",
+        number="1",
+        complement=None,
+        neighborhood="Centro",
+        city="São Paulo",
+        state="SP",
+    )
+    quote = SimpleNamespace(
+        service_id=1,
+        service_name="PAC",
+        company_name="Correios",
+        price=Decimal("20.00"),
+        delivery_time_days=5,
+    )
+    repository = AsyncMock()
+    repository.get_by_idempotency_key.side_effect = [None, None]
+    repository.get_cart_for_checkout.return_value = cart
+    repository.get_address_for_user.return_value = address
+    repository.lock_cart_for_checkout.return_value = cart
+    repository.lock_variants.return_value = [locked_variant]
+    shipping_service = AsyncMock()
+    shipping_service.calculate_quotes_for_products.return_value = [quote]
+    service = _service(repository, shipping_service, AsyncMock())
+
+    with pytest.raises(ValueError, match="dados do produto mudaram"):
+        await service.confirm(
+            user_id,
+            CheckoutConfirmSchema(
+                address_id=address_id,
+                shipping_service_id=1,
+                expected_total_amount=Decimal("40.00"),
+                payment_method=PaymentMethodEnum.PIX,
+                installments=1,
+            ),
+            uuid4(),
+        )
+
+    repository.create_checkout_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_confirm_requires_new_preview_when_address_changes_after_quote() -> None:
+    user_id = uuid4()
+    address_id = uuid4()
+    variant = _variant(stock=5)
+    cart = SimpleNamespace(
+        items=[SimpleNamespace(variant_id=variant.id, variant=variant, quantity=2)]
+    )
+    quoted_address = SimpleNamespace(
+        id=address_id,
+        zip_code="01001000",
+        street="Rua A",
+        number="1",
+        complement=None,
+        neighborhood="Centro",
+        city="São Paulo",
+        state="SP",
+    )
+    changed_address = SimpleNamespace(
+        id=address_id,
+        zip_code="20040020",
+        street="Rua B",
+        number="2",
+        complement=None,
+        neighborhood="Centro",
+        city="Rio de Janeiro",
+        state="RJ",
+    )
+    quote = SimpleNamespace(
+        service_id=1,
+        service_name="PAC",
+        company_name="Correios",
+        price=Decimal("20.00"),
+        delivery_time_days=5,
+    )
+    repository = AsyncMock()
+    repository.get_by_idempotency_key.side_effect = [None, None]
+    repository.get_cart_for_checkout.return_value = cart
+    repository.get_address_for_user.side_effect = [quoted_address, changed_address]
+    repository.lock_cart_for_checkout.return_value = cart
+    repository.lock_variants.return_value = [variant]
+    repository.get_active_reserved_quantity.return_value = 0
+    shipping_service = AsyncMock()
+    shipping_service.calculate_quotes_for_products.return_value = [quote]
+    service = _service(repository, shipping_service, AsyncMock())
+
+    with pytest.raises(ValueError, match="endereço foi alterado"):
+        await service.confirm(
+            user_id,
+            CheckoutConfirmSchema(
+                address_id=address_id,
+                shipping_service_id=1,
+                expected_total_amount=Decimal("40.00"),
+                payment_method=PaymentMethodEnum.PIX,
+                installments=1,
+            ),
+            uuid4(),
+        )
+
     repository.create_checkout_order.assert_not_awaited()

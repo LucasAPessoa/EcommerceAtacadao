@@ -2,13 +2,18 @@ import re
 from typing import List
 
 import httpx
+from pydantic import ValidationError
 
 from src.core.config import settings
 from src.integrations.melhor_envio.schemas import MelhorEnvioProductItem, MelhorEnvioQuote
 
 
 class MelhorEnvioError(Exception):
-    """Erro de comunicação com a API do Melhor Envio (rede, timeout, resposta de erro)."""
+    """Falha segura da integração de cotação, apropriada para a camada HTTP."""
+
+
+class MelhorEnvioConfigurationError(MelhorEnvioError):
+    """A integração não possui a configuração necessária para realizar cotações."""
 
 
 def _only_digits(value: str) -> str:
@@ -35,21 +40,11 @@ class MelhorEnvioClient:
         self.base_url = settings.MELHOR_ENVIO_BASE_URL
         self.token = settings.MELHOR_ENVIO_TOKEN
         self.user_agent = settings.MELHOR_ENVIO_USER_AGENT
-        self._validate_config()
 
     def _validate_config(self) -> None:
-        """Validate that all required configuration values are present."""
-        missing = []
-        if not self.base_url:
-            missing.append("MELHOR_ENVIO_BASE_URL")
-        if not self.token:
-            missing.append("MELHOR_ENVIO_TOKEN")
-        if not self.user_agent:
-            missing.append("MELHOR_ENVIO_USER_AGENT")
-        if missing:
-            raise ValueError(
-                f"Melhor Envio client misconfigured. Missing or empty: {', '.join(missing)}"
-            )
+        """Impede chamadas sem revelar nomes de variáveis ou credenciais ao cliente."""
+        if not all((self.base_url, self.token, self.user_agent)):
+            raise MelhorEnvioConfigurationError("Serviço de frete indisponível. Tente novamente.")
 
     def _headers(self) -> dict:
         return {
@@ -65,6 +60,7 @@ class MelhorEnvioClient:
         destination_zip_code: str,
         products: List[MelhorEnvioProductItem],
     ) -> List[MelhorEnvioQuote]:
+        self._validate_config()
         payload = {
             "from": {"postal_code": _only_digits(origin_zip_code)},
             "to": {"postal_code": _only_digits(destination_zip_code)},
@@ -77,16 +73,20 @@ class MelhorEnvioClient:
                     self.CALCULATE_PATH, json=payload, headers=self._headers()
                 )
         except httpx.HTTPError as exc:
-            raise MelhorEnvioError(f"Falha de comunicação com o Melhor Envio: {exc}") from exc
+            raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.") from exc
 
         if response.status_code >= 400:
-            raise MelhorEnvioError(
-                f"Melhor Envio retornou {response.status_code}: {response.text}"
-            )
+            raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.")
 
         try:
             data = response.json()
         except ValueError as exc:
-            raise MelhorEnvioError("Resposta inválida do Melhor Envio (não é JSON).") from exc
+            raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.") from exc
 
-        return [MelhorEnvioQuote.model_validate(item) for item in data]
+        if not isinstance(data, list):
+            raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.")
+
+        try:
+            return [MelhorEnvioQuote.model_validate(item) for item in data]
+        except (TypeError, ValidationError) as exc:
+            raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.") from exc
