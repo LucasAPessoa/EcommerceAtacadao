@@ -17,21 +17,24 @@ do Neon (`postgresql://`), que selecionava o driver `psycopg2` indisponível.
 - API: o agente não conseguiu iniciar a tarefa no tempo disponível; o
   orquestrador executou a correção confinada em configuração.
 - Frontend: não necessário, pois não há alteração de contrato ou cliente.
-- Revisor: solicitado para inspeção somente leitura, sem resposta antes do
-  encerramento desta execução.
+- Revisor: encontrou um P1 na primeira proposta, pois `sslmode` e
+  `channel_binding` seriam repassados como argumentos inválidos a `asyncpg`.
+  A correção subsequente foi revisada e aprovada.
 
 ## Decisão de configuração
 
 `Settings.DATABASE_URL` converte os esquemas `postgres://` e `postgresql://`
-para `postgresql+asyncpg://`. Como API e Alembic consomem a mesma configuração,
-ambos passam a selecionar o driver instalado. A parte após o esquema é mantida,
-incluindo `sslmode=require` e demais parâmetros Neon.
+para `postgresql+asyncpg://`. Para compatibilidade com o driver, `sslmode` é
+transformado em `ssl` e `channel_binding` é removido; os demais parâmetros da
+URL são preservados. Como API e Alembic consomem a mesma configuração, ambos
+passam a selecionar o driver instalado e recebem TLS pelo argumento suportado.
 
 ## Alterações
 
 - `src/core/config.py`: normalização validada de `DATABASE_URL`.
 - `.env.example`: URL explicitamente assíncrona.
-- `tests/test_config_unit.py`: cobertura para URL padrão e URL já normalizada.
+- `tests/test_config_unit.py`: cobertura para URL Neon, incluindo os argumentos
+  efetivos produzidos pelo dialeto SQLAlchemy asyncpg.
 
 ## Verificações
 
@@ -41,6 +44,14 @@ incluindo `sslmode=require` e demais parâmetros Neon.
 - `uv run ruff format --check src/core/config.py tests/test_config_unit.py` — aprovado.
 - `git diff --check` — aprovado.
 
+## Correções e ciclo de revisão
+
+O revisor identificou que preservar literalmente `sslmode=require` e
+`channel_binding=require` faria o SQLAlchemy repassá-los ao `asyncpg`, que não
+aceita esses argumentos. A URL agora produz `ssl=require`; o teste inspeciona
+`PGDialect_asyncpg.create_connect_args` e confirma a ausência dos argumentos
+inválidos. O revisor aprovou a versão corrigida.
+
 ## Riscos e trabalho restante
 
 O deploy precisa ser refeito para carregar a mudança. A variável
@@ -49,6 +60,4 @@ Vercel. Não houve commit, conforme o pedido atual não solicitou um.
 
 ## Veredito final
 
-`approved` pelo orquestrador, com validação automatizada aprovada. A revisão
-independente ficou indisponível neste ciclo; o ajuste é isolado e coberto pelo
-teste de configuração.
+`approved` pelo orquestrador e pelo revisor independente.

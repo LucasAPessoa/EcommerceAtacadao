@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -7,12 +8,27 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 def normalize_async_database_url(value: str) -> str:
-    """Garante o dialeto asyncpg para URLs PostgreSQL fornecidas pela infraestrutura."""
+    """Adapta URLs PostgreSQL do Neon para o dialeto e TLS aceitos por asyncpg."""
     if value.startswith("postgresql://"):
-        return f"postgresql+asyncpg://{value.removeprefix('postgresql://')}"
-    if value.startswith("postgres://"):
-        return f"postgresql+asyncpg://{value.removeprefix('postgres://')}"
-    return value
+        value = f"postgresql+asyncpg://{value.removeprefix('postgresql://')}"
+    elif value.startswith("postgres://"):
+        value = f"postgresql+asyncpg://{value.removeprefix('postgres://')}"
+
+    parsed = urlsplit(value)
+    if parsed.scheme != "postgresql+asyncpg":
+        return value
+
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    sslmode = next((parameter for name, parameter in query if name == "sslmode"), None)
+    query = [
+        (name, parameter) for name, parameter in query if name not in {"sslmode", "channel_binding"}
+    ]
+    if sslmode:
+        # O dialeto SQLAlchemy repassa sslmode/channel_binding como kwargs que
+        # asyncpg não aceita. asyncpg recebe o requisito TLS pelo argumento ssl.
+        query.append(("ssl", sslmode))
+
+    return urlunsplit(parsed._replace(query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -45,7 +61,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def configure_async_postgres_driver(cls, value: str) -> str:
-        """Converte a URL padrão do Neon/Vercel sem perder opções como sslmode."""
+        """Converte a URL padrão do Neon/Vercel para a configuração asyncpg."""
         return normalize_async_database_url(str(value))
 
     @property
