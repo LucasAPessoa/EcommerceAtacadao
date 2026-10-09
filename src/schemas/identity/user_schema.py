@@ -1,1 +1,108 @@
-zsh:3: command not found: git
+import re
+from datetime import datetime
+from typing import Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    is_active: bool = True
+    user_type: Literal["INDIVIDUAL", "COMPANY", "ADMIN"] = "INDIVIDUAL"
+
+    @field_validator("user_type", mode="before")
+    @classmethod
+    def normalize_user_type(cls, value: str) -> str:
+        legacy_mapping = {
+            "client": "INDIVIDUAL",
+            "user": "INDIVIDUAL",
+            "cpf": "INDIVIDUAL",
+            "cnpj": "COMPANY",
+        }
+        if isinstance(value, str):
+            return legacy_mapping.get(value, value)
+        return value
+
+
+class UserCreate(UserBase):
+    user_type: Literal["INDIVIDUAL", "COMPANY"] = "INDIVIDUAL"
+    password: str = Field(..., min_length=8, max_length=100)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    cpf: Optional[str] = None
+    cnpj: Optional[str] = None
+    corporate_name: Optional[str] = None
+    ie: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        password_pattern = re.compile(
+            r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)"
+            r"(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+        )
+        if not password_pattern.match(value):
+            raise ValueError(
+                "A senha precisa conter maiúsculas, minúsculas, números e caracteres especiais."
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_user_type_fields(self) -> "UserCreate":
+        if self.user_type == "INDIVIDUAL":
+            if not self.cpf:
+                raise ValueError("Individual users must provide cpf")
+            self.cnpj = None
+            self.corporate_name = None
+            self.ie = None
+        elif not self.corporate_name or not self.cnpj:
+            raise ValueError("Company users must provide corporate_name and cnpj")
+        else:
+            self.cpf = None
+        return self
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LogoutRequestSchema(BaseModel):
+    refresh_token: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class Token(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+
+class RoleSchema(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class UserResponse(UserBase):
+    id: UUID
+    full_name: Optional[str] = None
+    cpf: Optional[str] = None
+    cnpj: Optional[str] = None
+    corporate_name: Optional[str] = None
+    ie: Optional[str] = None
+    role: RoleSchema
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
