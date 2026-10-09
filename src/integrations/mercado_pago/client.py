@@ -1,9 +1,12 @@
+import logging
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
 from src.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class MercadoPagoError(Exception):
@@ -78,7 +81,14 @@ class MercadoPagoClient:
                 )
             response.raise_for_status()
             data = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "Mercado Pago recusou a criação da Order: status=%s",
+                exc.response.status_code,
+            )
+            raise MercadoPagoError("Serviço de pagamento indisponível. Tente novamente.") from exc
         except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Falha ao criar Order no Mercado Pago: %s", type(exc).__name__)
             raise MercadoPagoError("Serviço de pagamento indisponível. Tente novamente.") from exc
         if not isinstance(data, dict) or not data.get("id") or not data.get("checkout_url"):
             raise MercadoPagoError("Serviço de pagamento indisponível. Tente novamente.")
