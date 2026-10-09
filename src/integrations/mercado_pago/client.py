@@ -31,19 +31,30 @@ class MercadoPagoClient:
         )
 
     def _validate_config(self) -> None:
+        access_token_configured = bool(settings.MERCADO_PAGO_ACCESS_TOKEN)
+        webhook_secret_configured = bool(settings.MERCADO_PAGO_WEBHOOK_SECRET)
+        notification_url_is_public = self._is_public_https_url(
+            settings.MERCADO_PAGO_NOTIFICATION_URL
+        )
+        frontend_url_is_public = self._is_public_https_url(
+            settings.MERCADO_PAGO_FRONTEND_BASE_URL
+        )
         if not all(
             (
-                settings.MERCADO_PAGO_ACCESS_TOKEN,
-                settings.MERCADO_PAGO_WEBHOOK_SECRET,
-                settings.MERCADO_PAGO_NOTIFICATION_URL,
-                settings.MERCADO_PAGO_FRONTEND_BASE_URL,
-            )
-        ) or not all(
-            (
-                self._is_public_https_url(settings.MERCADO_PAGO_NOTIFICATION_URL),
-                self._is_public_https_url(settings.MERCADO_PAGO_FRONTEND_BASE_URL),
+                access_token_configured,
+                webhook_secret_configured,
+                notification_url_is_public,
+                frontend_url_is_public,
             )
         ):
+            logger.warning(
+                "Configuração Mercado Pago inválida: token=%s webhook_secret=%s "
+                "notification_url_public=%s frontend_url_public=%s",
+                access_token_configured,
+                webhook_secret_configured,
+                notification_url_is_public,
+                frontend_url_is_public,
+            )
             raise MercadoPagoError("Serviço de pagamento indisponível. Tente novamente.")
 
     def validate_config(self) -> None:
