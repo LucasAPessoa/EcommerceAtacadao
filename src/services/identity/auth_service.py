@@ -1,1 +1,1 @@
-zsh:5: command not found: git
+zsh:3: command not found: git
