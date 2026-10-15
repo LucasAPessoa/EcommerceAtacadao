@@ -21,7 +21,7 @@ dependencies = [
     "alembic>=1.13.1",            # Controle de versão do banco (Migrations)
     "asyncpg>=0.29.0",            # Driver assíncrono nativo para o PostgreSQL voar
     # Segurança e Autenticação
-    "pyjwt>=2.8.0",               # Geração e validação de tokens JWT
+    "pyjwt>=2.15.0",              # Geração e validação de tokens JWT
     "passlib[bcrypt]>=1.7.4",     # Hashing de senhas padrão ouro
     # Integrações externas
     "httpx>=0.27.0",              # Cliente HTTP assíncrono (usado pela integração com o Melhor Envio)
