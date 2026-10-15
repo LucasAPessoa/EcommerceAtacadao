@@ -34,3 +34,7 @@ instrui o agente principal a usá-los ao criar os subagentes.
 Quando `.codex` aceitar escrita, copie os quatro perfis para `.codex/agents/` e o
 conteúdo de `agents/config.toml` para `.codex/config.toml`. O limite de três
 threads exclui o agente principal e corresponde aos três especialistas.
+
+No Claude Code, os perfis equivalentes ficam em `/home/lucas/Projetos/.claude/agents/atacadao-*.md`
+(locator, api, front, ci, tester, reviewer), compartilhados com o `front_atacadao`;
+o `CLAUDE.md` de `/home/lucas/Projetos` resume o fluxo.

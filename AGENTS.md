@@ -33,7 +33,8 @@ afetado e o revisor. Registre no report por que um agente não foi necessário.
    sobrepõem. Mudanças no contrato HTTP são decididas antes da implementação ou
    comunicadas imediatamente entre os dois agentes.
 3. Agentes trocam mensagens diretas para dúvidas de contrato e bloqueios. Quando
-   mensagem direta não estiver disponível, o orquestrador faz o encaminhamento.
+   mensagem direta não estiver disponível (caso do Claude Code), o executor
+   registra `BLOQUEIO:` no handoff e o orquestrador faz o encaminhamento.
 4. Cada executor retorna um handoff curto: arquivos alterados, decisões, testes,
    riscos e questões para o outro especialista.
 5. Depois das implementações, o revisor inspeciona o diff integrado em modo
@@ -47,9 +48,8 @@ afetado e o revisor. Registre no report por que um agente não foi necessário.
 
 ## Posse de arquivos
 
-- Frontend: diretório de cliente quando existir, seus testes e assets. Como o
-  repositório ainda não possui frontend, não crie um sem pedido explícito; nesse
-  caso, analise contrato, jornada e requisitos de interface.
+- Frontend: o repositório separado `../front_atacadao` (React + Vite), seus
+  testes e assets. Não altere `src/` deste repositório a partir do frontend.
 - API: `src/`, `migrations/`, `tests/`, `scripts/` e configuração backend.
 - Revisor: nenhum arquivo de produto; apenas leitura e relatório ao orquestrador.
 - Orquestrador: `reports/agents/` e documentação de coordenação. Não implemente no
@@ -71,7 +71,8 @@ trabalho: um implementa, o outro revisa ou continua após o primeiro concluir.
 
 ## Formato do report
 
-Use `reports/agents/YYYY-MM-DD-HHMM-<slug>.md` e inclua:
+Use `reports/agents/YYYY-MM-DD-HHMM-<slug>.md`, no máximo 40 linhas, com bullets
+curtos (omita seções vazias) para:
 
 1. objetivo e escopo;
 2. critérios de aceite;
