@@ -58,6 +58,41 @@ MERCADO_PAGO_NOTIFICATION_URL=https://api.exemplo.com/api/v1/sales/checkout/merc
 MERCADO_PAGO_FRONTEND_BASE_URL=https://loja.exemplo.com
 ```
 
+## Rate limiting distribuído
+
+O rate limiting é independente da Vercel e usa Redis REST compatível com Upstash.
+Ele é opt-in: configure **ambas** as variáveis abaixo para ativá-lo; sem as duas,
+a API emite um warning único na inicialização
+(`rate_limit_disabled reason=missing_redis_configuration`) e opera fail-open para
+não indisponibilizar o checkout.
+
+IP do cliente: com `RATE_LIMIT_TRUST_PROXY_HEADERS=false` usa-se o peer direto.
+Com `true`, usa-se o header de valor único em `RATE_LIMIT_CLIENT_IP_HEADER`, se
+definido; senão o item mais à direita do `X-Forwarded-For` (o anexado pelo proxy
+confiável). **Na Vercel**, use `RATE_LIMIT_TRUST_PROXY_HEADERS=true` e
+`RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip`. Deixar `false` atrás de proxy faz todos
+os clientes compartilharem o IP do proxy (um bucket global); habilitar `true`
+sem proxy que sobrescreva esses headers permite forjá-los.
+
+Se o Redis falhar, a API segue fail-open e pula o Redis por
+`RATE_LIMIT_FAILURE_COOLDOWN_SECONDS` (padrão 30), registrando
+`rate_limit_fail_open` no máximo uma vez por janela.
+
+```env
+RATE_LIMIT_REDIS_REST_URL=https://seu-redis.upstash.io
+RATE_LIMIT_REDIS_REST_TOKEN=token-do-redis
+RATE_LIMIT_TRUST_PROXY_HEADERS=true
+RATE_LIMIT_CLIENT_IP_HEADER=x-real-ip
+RATE_LIMIT_FAILURE_COOLDOWN_SECONDS=30
+MAX_REQUEST_BODY_BYTES=1048576
+```
+
+São limitados por IP (login, cadastro, cotação e checkout); o webhook do Mercado
+Pago tem bucket separado e tolerante, aplicado somente depois de validar a
+assinatura. Decisão consciente: webhook com assinatura inválida não consome
+bucket; é limitado apenas pela validação HMAC e pelo teto de corpo. Uma recusa responde `429`, `Retry-After` e o envelope público
+`RATE_LIMITED`; corpo acima do limite declarado recebe `413`.
+
 ## Checkout transacional
 
 O checkout utiliza exclusivamente o carrinho persistido do usuário. O

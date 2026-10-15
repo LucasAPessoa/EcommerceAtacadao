@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import get_db
+from src.core.rate_limit import enforce_verified_webhook_rate_limit
 from src.core.sec import require_role
 from src.integrations.melhor_envio.client import MelhorEnvioError
 from src.integrations.mercado_pago.client import MercadoPagoError
@@ -137,6 +138,9 @@ async def mercado_pago_webhook(
         )
     try:
         service.verify_webhook_signature(provider_order_id, x_signature, x_request_id)
+        rate_limit_error = await enforce_verified_webhook_rate_limit(request)
+        if rate_limit_error is not None:
+            return rate_limit_error
         await service.process_order_webhook(provider_order_id)
     except MercadoPagoWebhookError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc

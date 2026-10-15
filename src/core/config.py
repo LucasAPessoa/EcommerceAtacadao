@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     MERCADO_PAGO_FRONTEND_BASE_URL: str = ""
     MERCADO_PAGO_BASE_URL: str = "https://api.mercadopago.com"
     CORS_ALLOWED_ORIGINS: str = ""
+    RATE_LIMIT_REDIS_REST_URL: str = ""
+    RATE_LIMIT_REDIS_REST_TOKEN: str = ""
+    RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
+    RATE_LIMIT_CLIENT_IP_HEADER: str = ""
+    RATE_LIMIT_FAILURE_COOLDOWN_SECONDS: float = 30.0
+    MAX_REQUEST_BODY_BYTES: int = 1_048_576
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

@@ -88,6 +88,9 @@ atual:
 
 - CORS está permissivo com origem curinga e precisa de configuração por ambiente
   antes de produção.
+- O rate limiting distribuído é opcional via Redis REST/Upstash: sem URL e token
+  completos opera fail-open com log operacional; os limites protegidos ficam no
+  middleware e o webhook é contado somente após validar sua assinatura.
 - O formato de erros ainda não é inteiramente uniforme.
 - Alguns repositories legados concluem a transação internamente.
 - O histórico Alembic possui downgrade sensível a nomes de constraints.
