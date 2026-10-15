@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Valores fictícios: os testes unitários não acessam banco nem serviços externos.
+  DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+  SECRET_KEY: ci-secret-key
+  REFRESH_SECRET_KEY: ci-refresh-key
+  MELHOR_ENVIO_TOKEN: ci-token
+  MELHOR_ENVIO_USER_AGENT: ci-agent
+  STORE_ORIGIN_ZIP_CODE: "01001000"
+
+jobs:
+  lint-bugs:
+    name: Lint (bugs reais)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check --select E9,F63,F7,F82 src tests
+
+  unit-tests:
+    name: Testes unitários (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen
+      - name: Executa todos os tests/**/*_unit.py
+        run: uv run pytest -q $(find tests -name '*_unit.py' | sort)
+
+  report-ruff-full:
+    name: Report - ruff completo (não bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check src tests
+
+  report-mypy:
+    name: Report - mypy completo (não bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run mypy --explicit-package-bases src
+
+  report-dependency-audit:
+    name: Report - auditoria de dependências (não bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv export --frozen --no-dev --no-emit-project -o requirements-audit.txt
+      - run: uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip

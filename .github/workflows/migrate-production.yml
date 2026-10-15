@@ -1,0 +1,37 @@
+name: Migrate production
+
+# Execução somente manual. O environment `production` exige aprovação de revisores
+# configurada no GitHub; DATABASE_URL vem do secret desse environment.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Alembic upgrade head (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    # workflow_dispatch permite escolher a branch; produção só migra a partir da main.
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-dev
+      - run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Exigidas por Settings, mas não usadas pelas migrations.
+          SECRET_KEY: migration-placeholder
+          REFRESH_SECRET_KEY: migration-placeholder
+          MELHOR_ENVIO_TOKEN: migration-placeholder
+          MELHOR_ENVIO_USER_AGENT: migration-placeholder
+          STORE_ORIGIN_ZIP_CODE: "00000000"

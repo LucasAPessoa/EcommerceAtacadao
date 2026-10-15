@@ -140,3 +140,12 @@ uv run pytest -q tests/sales/test_checkout_unit.py
 uv run ruff check src tests
 uv run mypy --explicit-package-bases src
 ```
+
+## CI
+
+O GitHub Actions (`.github/workflows/ci.yml`) roda em PRs e em push para `main`.
+Checks obrigatórios: `Lint (bugs reais)` e `Testes unitários (py3.11)` / `(py3.12)`.
+Ruff completo, mypy e `pip-audit` rodam como `Report - ...` (não bloqueantes até a #20).
+Localmente: `uv sync --frozen && uv run ruff check --select E9,F63,F7,F82 src tests`
+e `uv run pytest -q $(find tests -name '*_unit.py')` (requer as variáveis obrigatórias do `.env.example`).
+Migrations de produção: apenas via `migrate-production.yml` (manual, environment `production`).
