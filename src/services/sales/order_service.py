@@ -1,11 +1,15 @@
+import logging
 from datetime import UTC, datetime
 from typing import List, Optional
 from uuid import UUID
 
+from src.integrations.mercado_pago.client import MercadoPagoClient
 from src.models.enums import OrderStatusEnum, TransactionStatusEnum
 from src.models.identity import User
 from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.sales.order_schema import OrderResponseSchema
+
+logger = logging.getLogger(__name__)
 
 
 def _is_admin(user: User) -> bool:
@@ -15,8 +19,11 @@ def _is_admin(user: User) -> bool:
 class OrderService:
     """Consultas e transições posteriores ao checkout."""
 
-    def __init__(self, repository: OrderRepository) -> None:
+    def __init__(
+        self, repository: OrderRepository, client: MercadoPagoClient | None = None
+    ) -> None:
         self.repository = repository
+        self.client = client or MercadoPagoClient()
 
     async def get_order(self, order_id: UUID, current_user: User) -> Optional[OrderResponseSchema]:
         if _is_admin(current_user):
@@ -45,35 +52,58 @@ class OrderService:
             order = await self.repository.get_by_id_for_user(order_id, current_user.id)
         if order is None:
             return None
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        # Commit 1 (curto): o lock da transação serializa com o webhook, que
+        # também a bloqueia primeiro. Nenhuma I/O de rede ocorre com o lock aberto.
+        # O estado só é validado depois do lock e da releitura: um webhook que
+        # confirmou o pagamento enquanto esperávamos não pode ser sobrescrito.
+        session = self.repository.session
+        await self.repository.get_transaction_for_order(order.id)
+        await session.refresh(order, attribute_names=["status", "transactions"])
+        for transaction in order.transactions:
+            await session.refresh(transaction)
         if order.status != OrderStatusEnum.PENDING_PAYMENT:
+            await session.rollback()
             raise ValueError(
                 "Somente pedidos aguardando pagamento podem ser cancelados diretamente. "
                 "Pedidos pagos exigem um fluxo de reembolso."
             )
-
-        # A aprovação no Checkout Pro é assíncrona. Liberar a reserva enquanto
-        # uma Order do Mercado Pago ainda pode ser aprovada deixa o pedido sem
-        # estoque quando o webhook atrasado chegar.
-        active_mercado_pago_checkout = any(
-            transaction.gateway_provider in {"MERCADO_PAGO", "MERCADO_PAGO_PREPARING"}
-            and transaction.status
-            not in {
-                TransactionStatusEnum.REJECTED,
-                TransactionStatusEnum.CANCELED,
-                TransactionStatusEnum.REFUNDED,
-                TransactionStatusEnum.PARTIALLY_REFUNDED,
-                TransactionStatusEnum.CHARGEBACK,
-            }
-            for transaction in order.transactions
-        )
-        if active_mercado_pago_checkout:
-            raise ValueError(
-                "Este pedido possui um Checkout Mercado Pago ativo e não pode ser "
-                "cancelado localmente. Aguarde a confirmação ou o cancelamento no gateway."
-            )
-
-        now = datetime.now(UTC).replace(tzinfo=None)
+        remote_order_ids: list[str] = []
+        for transaction in order.transactions:
+            if transaction.gateway_provider != "MERCADO_PAGO":
+                continue
+            if transaction.gateway_ref_id:
+                remote_order_ids.append(str(transaction.gateway_ref_id))
+            if transaction.status in {
+                TransactionStatusEnum.PENDING,
+                TransactionStatusEnum.PROCESSING,
+            }:
+                transaction.status = TransactionStatusEnum.CANCELED
         await self.repository.update_status(order, OrderStatusEnum.CANCELED, current_user.id)
-        await self.repository.release_active_reservations(order.id, now)
+        if not remote_order_ids:
+            await self.repository.release_active_reservations(order.id, now)
+        await self.repository.session.commit()
+
+        if remote_order_ids:
+            # Uma aprovação tardia ainda pode chegar enquanto a Order remota
+            # estiver ativa: só libere o estoque depois do cancelamento confirmado.
+            confirmed = True
+            for provider_order_id in remote_order_ids:
+                try:
+                    await self.client.cancel_order(provider_order_id)
+                except Exception as exc:
+                    confirmed = False
+                    logger.warning(
+                        "mercado_pago_cancel_failed order_id=%s error=%s",
+                        order_id,
+                        type(exc).__name__,
+                    )
+            if confirmed:
+                # Commit 2 (curto).
+                await self.repository.release_active_reservations(
+                    order.id, datetime.now(UTC).replace(tzinfo=None)
+                )
+                await self.repository.session.commit()
         refreshed = await self.repository.get_by_id(order_id)
         return OrderResponseSchema.model_validate(refreshed)

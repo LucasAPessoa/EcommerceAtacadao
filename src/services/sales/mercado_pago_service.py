@@ -149,11 +149,16 @@ class MercadoPagoCheckoutService:
         if not hmac.compare_digest(expected, received):
             raise MercadoPagoWebhookError("Webhook não autorizado.")
 
+    # Fonte única: status remotos que significam dinheiro efetivado.
+    @staticmethod
+    def _funds_captured(order_status: str, status_detail: str) -> bool:
+        return order_status == "processed" and status_detail == "accredited"
+
     @staticmethod
     def _transaction_status(order_status: str, status_detail: str) -> TransactionStatusEnum:
         # Somente "processed/accredited" é confirmação de fundos pela API
         # Orders. Outros estados seguem pendentes para reconciliação segura.
-        if order_status == "processed" and status_detail == "accredited":
+        if MercadoPagoCheckoutService._funds_captured(order_status, status_detail):
             return TransactionStatusEnum.APPROVED
         if order_status == "processed" and status_detail == "partially_refunded":
             return TransactionStatusEnum.PARTIALLY_REFUNDED
@@ -208,6 +213,12 @@ class MercadoPagoCheckoutService:
             if reconciliation is None or reconciliation.status == ReconciliationStatusEnum.RESOLVED:
                 return
             await self._reconcile_confirmed_payment(order, transaction, reconciliation)
+            return
+        if order.status == OrderStatusEnum.CANCELED and transaction_status in {
+            TransactionStatusEnum.PROCESSING,
+            TransactionStatusEnum.PENDING,
+        }:
+            # Order remota não paga para pedido cancelado: evento terminal, no-op.
             return
         payments = provider_order.get("transactions", {}).get("payments", [])
         if isinstance(payments, list) and payments and isinstance(payments[0], dict):

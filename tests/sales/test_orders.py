@@ -135,16 +135,9 @@ class TestOrderImmutability:
 class TestCancelOrder:
     @pytest.mark.asyncio
     async def test_cancel_pending_order_releases_checkout(
-        self, client: httpx.AsyncClient, user_token: str
+        self, client: httpx.AsyncClient, user_token: str, pending_order: dict[str, str]
     ) -> None:
-        listing = await client.get(
-            f"{API_V1_PREFIX}/sales/orders/", headers=auth_headers(user_token)
-        )
-        pending = next(
-            (order for order in listing.json()["data"] if order["status"] == "PENDING_PAYMENT"),
-            None,
-        )
-        assert pending is not None, "O dataset deve preparar um pedido pendente cancelável"
+        pending = pending_order
 
         response = await client.post(
             f"{API_V1_PREFIX}/sales/orders/{pending['id']}/cancel",

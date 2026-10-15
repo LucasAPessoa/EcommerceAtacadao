@@ -148,3 +148,20 @@ class MercadoPagoClient:
         if not isinstance(refunds, list) or not refunds:
             raise MercadoPagoError("Não foi possível solicitar o estorno. Tente novamente.")
         return data
+
+    async def cancel_order(self, provider_order_id: str) -> dict[str, Any]:
+        """Cancela uma Order ainda não paga; erros do provedor viram MercadoPagoError."""
+        self._validate_config()
+        try:
+            async with httpx.AsyncClient(
+                base_url=settings.MERCADO_PAGO_BASE_URL, timeout=5.0
+            ) as client:
+                response = await client.post(
+                    f"/v1/orders/{provider_order_id}/cancel",
+                    headers={**self._headers(), "X-Idempotency-Key": f"cancel-{provider_order_id}"},
+                )
+            response.raise_for_status()
+            data = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise MercadoPagoError("Não foi possível cancelar o pagamento remoto.") from exc
+        return data if isinstance(data, dict) else {}
