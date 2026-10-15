@@ -119,6 +119,24 @@ async def get_current_active_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+_optional_security = HTTPBearer(auto_error=False)
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_security),
+    session: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """
+    Usuário autenticado ativo, ou None (anônimo) se o token faltar/for inválido.
+    Para rotas públicas cujo conteúdo varia por role; nunca levanta 401.
+    """
+    if credentials is None:
+        return None
+    try:
+        user = await get_current_user(credentials, session)
+    except HTTPException:
+        return None
+    return user if user.is_active else None
+
 def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
     return UserRepository(session)
 

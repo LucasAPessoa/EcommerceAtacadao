@@ -1,13 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.product_question_schema import (
-    ProductQuestionCreateSchema, ProductQuestionUpdateSchema, ProductQuestionResponseSchema,
-)
-from src.repositories.catalog.product_question_repository import ProductQuestionRepository
-from src.services.catalog.product_question_service import ProductQuestionService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.product_question_repository import ProductQuestionRepository
+from src.schemas.catalog.product_question_schema import (
+    ProductQuestionCreateSchema,
+    ProductQuestionResponseSchema,
+    ProductQuestionUpdateSchema,
+)
+from src.services.catalog.product_question_service import ProductQuestionService
 
 
 def get_product_question_service(session: AsyncSession = Depends(get_db)) -> ProductQuestionService:
@@ -33,4 +35,5 @@ router = build_crud_router(
     },
     not_found_message="Pergunta não encontrada.",
     write_roles=["admin"],
+    create_as_author=True,
 )

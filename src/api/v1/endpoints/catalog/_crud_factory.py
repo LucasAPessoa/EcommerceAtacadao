@@ -24,7 +24,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from src.core.sec import get_current_active_user, require_role
+from src.core.sec import get_current_active_user, get_optional_current_user, require_role
 from src.schemas.response_schema import BaseResponse
 
 
@@ -41,6 +41,8 @@ def build_crud_router(
     supports_pagination: bool = False,
     create_roles: Optional[List[str]] = None,
     write_roles: Optional[List[str]] = None,
+    create_as_author: bool = False,
+    hide_unapproved_from_public: bool = False,
 ) -> APIRouter:
     """
     verbs: dict com os nomes reais dos métodos do service, ex.:
@@ -50,6 +52,15 @@ def build_crud_router(
     create_roles / write_roles: lista de roles (ex. ["admin"]) exigidas para
         criar / para atualizar+excluir. Se None, basta estar autenticado e
         ativo (get_current_active_user), sem checar role específica.
+
+    create_as_author: se True, o service de criação recebe o id do usuário
+        autenticado como 2º argumento (autor definido pelo servidor, nunca
+        pelo payload).
+
+    hide_unapproved_from_public: se True, GET de lista/por id usam auth
+        opcional e passam `include_unapproved=<é admin>` ao service. Anônimo,
+        token inválido ou role não-admin só veem registros aprovados (o
+        por-id de não aprovado vira 404). Token inválido NÃO gera 401.
     """
     router = APIRouter(prefix=prefix, tags=tags)
 
@@ -74,10 +85,23 @@ def build_crud_router(
         _user=_create_dependency(),
     ):
         try:
-            data = await getattr(service, verbs["create"])(payload)
+            create = getattr(service, verbs["create"])
+            data = await (create(payload, _user.id) if create_as_author else create(payload))
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         return BaseResponse(status="success", data=data)
+
+    async def _no_viewer():
+        return None
+
+    # Só resolve o usuário opcional quando o recurso filtra por role.
+    _viewer_dependency = get_optional_current_user if hide_unapproved_from_public else _no_viewer
+
+    def _read_kwargs(user) -> dict:
+        if not hide_unapproved_from_public:
+            return {}
+        is_admin = bool(user and user.role and user.role.name == "admin")
+        return {"include_unapproved": is_admin}
 
     if supports_pagination:
         @router.get("/", response_model=BaseResponse[List[response_schema]])
@@ -85,18 +109,28 @@ def build_crud_router(
             skip: int = 0,
             limit: int = 100,
             service=Depends(service_dependency),
+            viewer=Depends(_viewer_dependency),
         ):
-            data = await getattr(service, verbs["list"])(skip=skip, limit=limit)
+            data = await getattr(service, verbs["list"])(
+                skip=skip, limit=limit, **_read_kwargs(viewer)
+            )
             return BaseResponse(status="success", data=data)
     else:
         @router.get("/", response_model=BaseResponse[List[response_schema]])
-        async def list_items(service=Depends(service_dependency)):
-            data = await getattr(service, verbs["list"])()
+        async def list_items(
+            service=Depends(service_dependency),
+            viewer=Depends(_viewer_dependency),
+        ):
+            data = await getattr(service, verbs["list"])(**_read_kwargs(viewer))
             return BaseResponse(status="success", data=data)
 
     @router.get("/{item_id}", response_model=BaseResponse[response_schema])
-    async def get_item(item_id: UUID, service=Depends(service_dependency)):
-        data = await getattr(service, verbs["get"])(item_id)
+    async def get_item(
+        item_id: UUID,
+        service=Depends(service_dependency),
+        viewer=Depends(_viewer_dependency),
+    ):
+        data = await getattr(service, verbs["get"])(item_id, **_read_kwargs(viewer))
         if not data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
         return BaseResponse(status="success", data=data)

@@ -1,23 +1,28 @@
-from uuid import UUID
 from typing import List, Optional
+from uuid import UUID
 
-from src.schemas.catalog.product_question_schema import ProductQuestionCreateSchema, ProductQuestionUpdateSchema, ProductQuestionResponseSchema
 from src.repositories.catalog.product_question_repository import ProductQuestionRepository
+from src.schemas.catalog.product_question_schema import (
+    ProductQuestionCreateSchema,
+    ProductQuestionResponseSchema,
+    ProductQuestionUpdateSchema,
+)
+
 
 class ProductQuestionService:
     def __init__(self, repository: ProductQuestionRepository):
         self.repository = repository
 
-    async def create_question(self, question_in: ProductQuestionCreateSchema) -> ProductQuestionResponseSchema:
+    async def create_question(self, question_in: ProductQuestionCreateSchema, user_id: UUID) -> ProductQuestionResponseSchema:
         """Regras de negócio para perguntas e respostas."""
         
         if not question_in.question_text.strip():
             raise ValueError("A pergunta não pode estar vazia.")
-            
-        if question_in.answer_text is not None and not question_in.answer_text.strip():
-            raise ValueError("Se a resposta for enviada, não pode ser vazia.")
 
-        data = question_in.model_dump(exclude_unset=True)
+
+        data = question_in.model_dump()
+        data["user_id"] = user_id  # autor = usuário autenticado
+        data["answer_text"] = None  # resposta é exclusiva de admin (PATCH)
         return await self.repository.create(data)
 
     async def list_questions(self) -> List[ProductQuestionResponseSchema]:

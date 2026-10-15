@@ -1,13 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.product_review_schema import (
-    ProductReviewCreateSchema, ProductReviewUpdateSchema, ProductReviewResponseSchema,
-)
-from src.repositories.catalog.product_review_repository import ProductReviewRepository
-from src.services.catalog.product_review_service import ProductReviewService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.product_review_repository import ProductReviewRepository
+from src.schemas.catalog.product_review_schema import (
+    ProductReviewCreateSchema,
+    ProductReviewResponseSchema,
+    ProductReviewUpdateSchema,
+)
+from src.services.catalog.product_review_service import ProductReviewService
 
 
 def get_product_review_service(session: AsyncSession = Depends(get_db)) -> ProductReviewService:
@@ -35,4 +37,6 @@ router = build_crud_router(
     },
     not_found_message="Avaliação não encontrada.",
     write_roles=["admin"],
+    create_as_author=True,
+    hide_unapproved_from_public=True,
 )
