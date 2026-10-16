@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 class MercadoPagoError(Exception):
     """Falha pública e segura da integração de pagamentos."""
 
+    def __init__(self, message: str = "", status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class MercadoPagoClient:
     _OFFICIAL_CHECKOUT_SUFFIX = ".mercadopago.com.br"
@@ -162,6 +166,11 @@ class MercadoPagoClient:
                 )
             response.raise_for_status()
             data = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise MercadoPagoError(
+                "Não foi possível cancelar o pagamento remoto.",
+                status_code=exc.response.status_code,
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise MercadoPagoError("Não foi possível cancelar o pagamento remoto.") from exc
         return data if isinstance(data, dict) else {}

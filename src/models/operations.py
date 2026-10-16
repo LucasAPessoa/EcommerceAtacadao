@@ -61,6 +61,13 @@ class Transaction(Base, TimestampMixin):
     )
     paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     webhook_processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Cancelamento remoto (Mercado Pago): confirmação e tentativas do job de manutenção.
+    # cancel_attempts nulo equivale a zero; "provider_terminal" em
+    # cancel_last_error_code indica recusa definitiva do provedor (não repetir).
+    cancel_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    cancel_attempts: Mapped[Optional[int]] = mapped_column(Integer)
+    cancel_last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    cancel_last_error_code: Mapped[Optional[str]] = mapped_column(String(50))
 
     order: Mapped["Order"] = relationship(back_populates="transactions")
 

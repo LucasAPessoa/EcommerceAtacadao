@@ -93,6 +93,25 @@ assinatura. Decisão consciente: webhook com assinatura inválida não consome
 bucket; é limitado apenas pela validação HMAC e pelo teto de corpo. Uma recusa responde `429`, `Retry-After` e o envelope público
 `RATE_LIMITED`; corpo acima do limite declarado recebe `413`.
 
+## Expiração e manutenção de pagamentos
+
+- Com `MERCADO_PAGO_ORDER_EXPIRATION_ENABLED=true` (padrão), a Order do Mercado
+  Pago é criada com `expiration_time` = janela persistida da reserva (`PT{n}M`,
+  vencimento da reserva menos `created_at` do pedido, arredondado para baixo, mínimo
+  `PT1M`; idêntico entre retries da mesma Idempotency-Key). Os limites do campo não são documentados
+  para o Checkout Pro: **valide o valor no sandbox antes do deploy**. A flag
+  permite desligar o envio sem mudar código.
+- `POST /api/v1/internal/jobs/payment-maintenance` (header
+  `Authorization: Bearer <MAINTENANCE_JOB_TOKEN>`; 404 com token vazio, 401 com
+  token errado) executa o job idempotente: expira reservas vencidas de pedidos
+  cancelados, move pedidos `PENDING_PAYMENT` abandonados para `EXPIRED` e repete
+  cancelamentos remotos pendentes (backoff 1, 2, 4... min; só expira pedidos após
+  `MERCADO_PAGO_EXPIRATION_GRACE_SECONDS`=120 do vencimento; orçamento de 8 s e até 10
+  cancels remotos por execução) por `MERCADO_PAGO_CANCEL_RETRY_HOURS` (24) e
+  até `MERCADO_PAGO_CANCEL_MAX_ATTEMPTS` (8, backoff de 1 a 64 min ≈ 2 h). Pedidos pagos nunca são tocados.
+  Agende-o externamente (ex.: a cada 5 minutos). Execução manual:
+  `uv run python -m scripts.run_payment_maintenance`.
+
 ## Checkout transacional
 
 O checkout utiliza exclusivamente o carrinho persistido do usuário. O

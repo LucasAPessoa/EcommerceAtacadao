@@ -74,6 +74,7 @@ async def test_cancel_calls_remote_after_local_commit() -> None:
     client.cancel_order.assert_awaited_once_with("ORD-1")
     assert order.status == OrderStatusEnum.CANCELED
     assert transaction.status == TransactionStatusEnum.CANCELED
+    assert transaction.cancel_confirmed_at is not None
     assert result.status == OrderStatusEnum.CANCELED
 
 
@@ -123,6 +124,7 @@ async def test_remote_cancel_failure_keeps_local_cancel_and_logs_safely(
 
     assert order.status == OrderStatusEnum.CANCELED
     assert events == ["update_status", "commit", "remote_cancel"]
+    assert _tx.__dict__.get("cancel_confirmed_at") is None
     repository.release_active_reservations.assert_not_awaited()
     assert f"mercado_pago_cancel_failed order_id={order.id} error=MercadoPagoError" in caplog.text
     assert "SEGREDO" not in caplog.text
