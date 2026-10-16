@@ -59,6 +59,9 @@ class ReconciliationStatusEnum(str, enum.Enum):
 class ReconciliationReasonEnum(str, enum.Enum):
     STOCK_COMMIT_FAILED = "STOCK_COMMIT_FAILED"
     CANCELED_ORDER_APPROVED = "CANCELED_ORDER_APPROVED"
+    PAYMENT_REFUNDED = "PAYMENT_REFUNDED"
+    PAYMENT_PARTIALLY_REFUNDED = "PAYMENT_PARTIALLY_REFUNDED"
+    PAYMENT_CHARGEBACK = "PAYMENT_CHARGEBACK"
 
 
 class ReconciliationOutcomeEnum(str, enum.Enum):

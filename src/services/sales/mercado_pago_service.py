@@ -27,6 +27,25 @@ from src.services.sales.checkout_service import CheckoutService
 logger = logging.getLogger(__name__)
 
 
+_KNOWN_PENDING_STATUSES = {"created", "processing", "action_required", "pending", "expired"}
+_DISPATCHED = {OrderStatusEnum.PROCESSING, OrderStatusEnum.SHIPPED, OrderStatusEnum.DELIVERED}
+_UNDISPATCHED_PAID = {OrderStatusEnum.PAID, OrderStatusEnum.PAYMENT_RECONCILIATION}
+# Transições financeiras posteriores à aprovação (estado atual -> novos estados).
+_FINANCIAL_TRANSITIONS = {
+    TransactionStatusEnum.APPROVED: {
+        TransactionStatusEnum.REFUNDED,
+        TransactionStatusEnum.PARTIALLY_REFUNDED,
+        TransactionStatusEnum.CHARGEBACK,
+    },
+    TransactionStatusEnum.PARTIALLY_REFUNDED: {
+        TransactionStatusEnum.REFUNDED,
+        TransactionStatusEnum.CHARGEBACK,
+    },
+    TransactionStatusEnum.CHARGEBACK: {TransactionStatusEnum.REFUNDED},
+    TransactionStatusEnum.REFUNDED: set(),
+}
+
+
 class MercadoPagoWebhookError(ValueError):
     """Webhook não autenticado ou sem dados suficientes para processamento."""
 
@@ -236,6 +255,16 @@ class MercadoPagoCheckoutService:
             return TransactionStatusEnum.CANCELED
         if order_status in {"failed", "rejected"}:
             return TransactionStatusEnum.REJECTED
+        if order_status == "charged_back":
+            # in_process, settled e reimbursed: todos CHARGEBACK; o detalhe
+            # distingue revisão manual de devolução total (ver _apply_financial_event).
+            return TransactionStatusEnum.CHARGEBACK
+        if order_status not in _KNOWN_PENDING_STATUSES:
+            logger.warning(
+                "mercado_pago_unknown_status status=%s detail=%s",
+                order_status[:40],
+                status_detail[:40],
+            )
         return TransactionStatusEnum.PROCESSING
 
     async def process_order_webhook(self, provider_order_id: str) -> None:
@@ -272,15 +301,32 @@ class MercadoPagoCheckoutService:
         transaction_status = self._transaction_status(
             str(provider_order.get("status", "")), status_detail
         )
-        # Um evento antigo não pode rebaixar uma aprovação. A exceção é o
-        # estorno, que é uma transição financeira posterior e precisa ser visto.
-        if (
-            transaction.status == TransactionStatusEnum.APPROVED
-            and transaction_status != TransactionStatusEnum.REFUNDED
-        ):
-            if reconciliation is None or reconciliation.status == ReconciliationStatusEnum.RESOLVED:
+        # Um evento antigo não pode rebaixar uma aprovação. Só passam as
+        # transições financeiras posteriores (estorno, chargeback).
+        if transaction.status in _FINANCIAL_TRANSITIONS:
+            current = transaction.status
+            is_transition = transaction_status in _FINANCIAL_TRANSITIONS[current] or (
+                # Chargeback reimbursed após in_process/settled; nunca o inverso.
+                current == TransactionStatusEnum.CHARGEBACK
+                and transaction_status == TransactionStatusEnum.CHARGEBACK
+                and status_detail == "reimbursed"
+                and transaction.gateway_status_detail != "reimbursed"
+            )
+            if is_transition:
+                transaction.status = transaction_status
+                transaction.gateway_status_detail = status_detail[:100] or None
+                transaction.webhook_processed_at = datetime.now(UTC).replace(tzinfo=None)
+                await self._apply_financial_event(
+                    order, transaction, reconciliation, transaction_status, status_detail
+                )
+                await self.repository.session.flush()
                 return
-            await self._reconcile_confirmed_payment(order, transaction, reconciliation)
+            if (
+                current == TransactionStatusEnum.APPROVED
+                and reconciliation is not None
+                and reconciliation.status != ReconciliationStatusEnum.RESOLVED
+            ):
+                await self._reconcile_confirmed_payment(order, transaction, reconciliation)
             return
         if order.status in {
             OrderStatusEnum.CANCELED,
@@ -318,27 +364,102 @@ class MercadoPagoCheckoutService:
                         )
             elif order.status != OrderStatusEnum.PAID:
                 await self._record_nonfulfillable_approval(order, transaction, reconciliation)
-        elif transaction_status in {TransactionStatusEnum.REJECTED, TransactionStatusEnum.CANCELED}:
+        elif transaction_status in {
+            TransactionStatusEnum.REJECTED,
+            TransactionStatusEnum.CANCELED,
+            TransactionStatusEnum.REFUNDED,  # accredited perdido: estoque nunca baixado
+        }:
             if order.status == OrderStatusEnum.PENDING_PAYMENT:
                 await self.repository.update_status(order, OrderStatusEnum.CANCELED, None)
                 await self.repository.release_active_reservations(
                     order.id, datetime.now(UTC).replace(tzinfo=None)
                 )
-        elif transaction_status == TransactionStatusEnum.REFUNDED:
-            refunded_at = datetime.now(UTC).replace(tzinfo=None)
+        await self.repository.session.flush()
+
+    async def _apply_financial_event(
+        self,
+        order: Any,
+        transaction: Any,
+        reconciliation: Any,
+        new_status: TransactionStatusEnum,
+        status_detail: str,
+    ) -> None:
+        """Efeitos de estorno/chargeback no pedido e no estoque (chamado uma vez por evento)."""
+        now = datetime.now(UTC).replace(tzinfo=None)
+        fully_refunded = new_status == TransactionStatusEnum.REFUNDED or (
+            new_status == TransactionStatusEnum.CHARGEBACK and status_detail == "reimbursed"
+        )
+        if not fully_refunded:
+            if new_status == TransactionStatusEnum.PARTIALLY_REFUNDED:
+                await self._open_manual_review(
+                    order,
+                    transaction,
+                    reconciliation,
+                    ReconciliationReasonEnum.PAYMENT_PARTIALLY_REFUNDED,
+                    "payment_partially_refunded",
+                )
+            else:
+                await self._open_manual_review(
+                    order,
+                    transaction,
+                    reconciliation,
+                    ReconciliationReasonEnum.PAYMENT_CHARGEBACK,
+                    "payment_chargeback",
+                )
+            return
+
+        if order.status in _DISPATCHED:
+            # Devolução física: sem mexer em status nem em estoque.
+            await self._open_manual_review(
+                order,
+                transaction,
+                reconciliation,
+                ReconciliationReasonEnum.PAYMENT_REFUNDED,
+                "payment_refunded_after_dispatch",
+            )
+        else:
+            if order.status in _UNDISPATCHED_PAID:
+                await self.repository.restore_confirmed_stock(order.id, now)
+                await self.repository.release_active_reservations(order.id, now)
+                await self.repository.update_status(order, OrderStatusEnum.CANCELED, None)
             if reconciliation is not None:
                 reconciliation.status = ReconciliationStatusEnum.RESOLVED
                 reconciliation.outcome = ReconciliationOutcomeEnum.REFUNDED
-                reconciliation.resolved_at = refunded_at
+                reconciliation.resolved_at = now
                 reconciliation.next_retry_at = None
                 reconciliation.last_error_code = None
-            refund = await self.repository.get_refund_for_transaction(transaction.id)
-            if refund is not None:
-                refund.status = RefundStatusEnum.COMPLETED
-                refund.completed_at = refunded_at
-                refund.next_retry_at = None
-                refund.last_error_code = None
-        await self.repository.session.flush()
+        refund = await self.repository.get_refund_for_transaction(transaction.id)
+        if refund is not None:
+            refund.status = RefundStatusEnum.COMPLETED
+            refund.completed_at = now
+            refund.next_retry_at = None
+            refund.last_error_code = None
+
+    async def _open_manual_review(
+        self,
+        order: Any,
+        transaction: Any,
+        reconciliation: Any,
+        reason: ReconciliationReasonEnum,
+        error_code: str,
+    ) -> None:
+        """Abre (ou reabre) a única reconciliação do pedido para revisão manual.
+
+        O modelo permite um registro por pedido (UNIQUE order_id); uma reconciliação
+        já resolvida (ex.: FULFILLMENT_CONFIRMED) é histórico de um evento anterior,
+        então é reaberta com o novo motivo em vez de criar um segundo registro.
+        """
+        now = datetime.now(UTC).replace(tzinfo=None)
+        if reconciliation is None:
+            reconciliation = await self.repository.create_reconciliation(
+                order.id, transaction.id, now, reason=reason, error_code=error_code
+            )
+        reconciliation.reason = reason
+        reconciliation.status = ReconciliationStatusEnum.IN_REVIEW
+        reconciliation.outcome = ReconciliationOutcomeEnum.MANUAL_REVIEW
+        reconciliation.last_error_code = error_code
+        reconciliation.next_retry_at = None
+        reconciliation.resolved_at = None
 
     async def _record_nonfulfillable_approval(
         self, order: Any, transaction: Any, reconciliation: Any
@@ -410,11 +531,45 @@ class MercadoPagoCheckoutService:
         await self._reconcile_confirmed_payment(order, transaction, reconciliation)
 
     async def request_full_refund(self, order_id: UUID) -> None:
-        """Solicita, mas não declara concluído, o estorno total de uma Order aprovada."""
+        """Solicita, mas não declara concluído, o estorno total de uma Order aprovada.
+
+        Elegível: reconciliação aberta (fluxo original) ou pedido PAID com transação
+        APPROVED ainda não despachado. A conclusão chega pelo webhook.
+        """
         transaction = await self.repository.get_transaction_for_mercado_pago_order(order_id)
+        if transaction is None or not transaction.gateway_ref_id:
+            raise ValueError("Pedido não possui pagamento elegível para estorno.")
+        # Validações de estado só depois do lock da transação e da releitura.
+        order = await self.repository.get_by_id(order_id)
+        if order is None:
+            raise ValueError("Pedido não possui pagamento elegível para estorno.")
+        await self.repository.session.refresh(order, attribute_names=["status"])
+        await self.repository.session.refresh(transaction)
+        if order.status in _DISPATCHED:
+            raise ValueError(
+                "Pedido já despachado: o estorno exige o fluxo de devolução."
+            )
+        if transaction.status != TransactionStatusEnum.APPROVED:
+            raise ValueError("Somente pagamentos aprovados podem ser estornados.")
         reconciliation = await self.repository.get_reconciliation_for_order(order_id, lock=True)
-        if transaction is None or reconciliation is None or not transaction.gateway_ref_id:
-            raise ValueError("Pedido não possui reconciliação elegível para estorno.")
+        existing_reason = getattr(reconciliation, "reason", None)
+        refund_reason = (
+            str(getattr(existing_reason, "value", existing_reason)).lower()
+            if existing_reason
+            else "stock_commit_failed"
+        )
+        if reconciliation is None:
+            if order.status != OrderStatusEnum.PAID:
+                raise ValueError("Pedido não possui reconciliação elegível para estorno.")
+            reconciliation = await self.repository.create_reconciliation(
+                order_id,
+                transaction.id,
+                datetime.now(UTC).replace(tzinfo=None),
+                reason=ReconciliationReasonEnum.PAYMENT_REFUNDED,
+                error_code="admin_refund_requested",
+            )
+            reconciliation.next_retry_at = None  # nada a re-tentar localmente
+            refund_reason = "payment_refunded"
         refund = await self.repository.get_refund_for_reconciliation(transaction.id)
         if refund is not None and refund.gateway_ref_id:
             return
@@ -424,7 +579,7 @@ class MercadoPagoCheckoutService:
                 order_id=order_id,
                 transaction_id=transaction.id,
                 amount_refunded=transaction.amount,
-                reason="stock_commit_failed",
+                reason=refund_reason,
                 status=RefundStatusEnum.REQUESTED,
                 idempotency_key=refund_key,
                 attempts=0,
@@ -434,6 +589,7 @@ class MercadoPagoCheckoutService:
             refund_key = refund.idempotency_key or refund_key
         reconciliation.outcome = ReconciliationOutcomeEnum.REFUND_REQUESTED
         reconciliation.status = ReconciliationStatusEnum.IN_REVIEW
+        reconciliation.resolved_at = None
         await self.repository.session.commit()
 
         try:

@@ -34,6 +34,23 @@ class OrderService:
             return None
         return OrderResponseSchema.model_validate(order)
 
+    @staticmethod
+    def assert_payment_approved_for_dispatch(order: Any) -> None:
+        """Guarda do despacho (PROCESSING/SHIPPED/DELIVERED): exige pagamento APPROVED.
+
+        Contrato obrigatório de qualquer endpoint de despacho futuro: chamar antes de
+        mudar o status. Sem esse fluxo na API, o bloqueio de estorno parcial/chargeback
+        é a reconciliação MANUAL_REVIEW mais ``payment_status``.
+        """
+        transactions = list(getattr(order, "transactions", None) or [])
+        if not transactions or any(
+            transaction.status != TransactionStatusEnum.APPROVED for transaction in transactions
+        ):
+            raise ValueError(
+                "O pedido não pode ser despachado: o pagamento não está aprovado "
+                "(estornado, contestado ou pendente)."
+            )
+
     async def list_orders(
         self, current_user: User, skip: int = 0, limit: int = 100
     ) -> List[OrderResponseSchema]:
@@ -67,7 +84,8 @@ class OrderService:
             await session.rollback()
             raise ValueError(
                 "Somente pedidos aguardando pagamento podem ser cancelados diretamente. "
-                "Pedidos pagos exigem um fluxo de reembolso."
+                "Pedidos pagos exigem reembolso administrativo "
+                "(POST /orders/{id}/request-refund)."
             )
         remote_order_ids: list[str] = []
         remote_transactions: list[Any] = []

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
@@ -27,6 +28,8 @@ from src.models.sales import (
     OrderStatusHistory,
     StockReservation,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class OrderRepository:
@@ -469,6 +472,40 @@ class OrderRepository:
             variant.stock_quantity -= reservation.quantity
             reservation.status = StockReservationStatusEnum.CONFIRMED
             reservation.confirmed_at = confirmed_at
+        await self.session.flush()
+
+    async def restore_confirmed_stock(self, order_id: UUID, restored_at: datetime) -> None:
+        """Devolve o estoque baixado por confirm_active_reservations, uma única vez.
+
+        Não há movimento de inventário: a baixa é um decremento de
+        ``stock_quantity`` com a reserva marcada CONFIRMED. Reverter é incrementar
+        e marcar a reserva RELEASED, o que torna a operação idempotente.
+        """
+        query = (
+            select(StockReservation)
+            .where(
+                StockReservation.order_id == order_id,
+                StockReservation.status == StockReservationStatusEnum.CONFIRMED,
+            )
+            .with_for_update()
+        )
+        reservations = list((await self.session.execute(query)).scalars().all())
+        if not reservations:
+            return
+        variants = await self.lock_variants([r.variant_id for r in reservations])
+        variants_by_id = {variant.id: variant for variant in variants}
+        for reservation in reservations:
+            variant = variants_by_id.get(reservation.variant_id)
+            if variant is not None:
+                variant.stock_quantity += reservation.quantity
+            else:
+                # Política atual: lock_variants ignora SKU excluído, então não há
+                # estoque a devolver; a reserva ainda é liberada.
+                logger.warning(
+                    "stock_restore_skipped_deleted_sku reservation_id=%s", reservation.id
+                )
+            reservation.status = StockReservationStatusEnum.RELEASED
+            reservation.released_at = restored_at
         await self.session.flush()
 
     async def update_status(
