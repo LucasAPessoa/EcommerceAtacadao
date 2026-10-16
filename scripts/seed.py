@@ -661,7 +661,11 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             address: Address,
             payment_method: PaymentMethodEnum,
             transaction_status: TransactionStatusEnum,
+            scenario_key: str | None = None,
         ) -> tuple[Order, Transaction]:
+            # A chave do cenário identifica o pedido de forma idempotente; por padrão
+            # é o próprio status, mas cenários extras (ex.: chargeback) usam a sua.
+            key = scenario_key or order_status.value
             subtotal = sum(
                 (Decimal(str(variants_by_code[sku].base_price)) * qty for sku, qty in items_specs),
                 Decimal("0.00"),
@@ -669,7 +673,7 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             order = Order(
                 user_id=user.id,
                 status=order_status,
-                checkout_idempotency_key=uuid.uuid5(SEED_NAMESPACE, order_status.value),
+                checkout_idempotency_key=uuid.uuid5(SEED_NAMESPACE, key),
                 shipping_address_snapshot={
                     "zip_code": address.zip_code,
                     "street": address.street,
@@ -718,7 +722,7 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             transaction = Transaction(
                 order_id=order.id,
                 payment_method=payment_method,
-                gateway_ref_id=f"SEED-{order_status.value}",
+                gateway_ref_id=f"SEED-{key}",
                 amount=order.total_amount,
                 installments=3 if payment_method == PaymentMethodEnum.CREDIT_CARD else 1,
                 status=transaction_status,
@@ -807,21 +811,32 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             if transaction is not None:
                 transactions_by_status[transaction_status] = transaction
 
-        # Um pedido pode registrar múltiplas tentativas de pagamento. Isso
-        # permite representar todos os estados do gateway sem falsificar o
-        # estado comercial do pedido.
-        chargeback_transaction, _ = await get_or_create(
-            session,
-            Transaction,
-            gateway_ref_id="SEED-CHARGEBACK",
-            defaults=dict(
-                order_id=orders_by_status[OrderStatusEnum.DELIVERED].id,
-                payment_method=PaymentMethodEnum.CREDIT_CARD,
-                amount=orders_by_status[OrderStatusEnum.DELIVERED].total_amount,
-                installments=3,
-                status=TransactionStatusEnum.CHARGEBACK,
-            ),
+        # Cada pedido tem exatamente uma Transaction (índice único
+        # uq_transactions_order_id). Chargeback é um estado do pagamento, não um
+        # novo pagamento: o cenário usa um pedido entregue próprio.
+        chargeback_key = uuid.uuid5(SEED_NAMESPACE, "CHARGEBACK")
+        existing_chargeback = await session.execute(
+            select(Order).where(
+                Order.user_id == customer1.id,
+                Order.checkout_idempotency_key == chargeback_key,
+            )
         )
+        chargeback_order = existing_chargeback.scalar_one_or_none()
+        if chargeback_order is None:
+            chargeback_order, chargeback_transaction = await create_order(
+                customer1,
+                OrderStatusEnum.DELIVERED,
+                [("AGUA-500-FD12", 1)],
+                address1,
+                PaymentMethodEnum.CREDIT_CARD,
+                TransactionStatusEnum.CHARGEBACK,
+                scenario_key="CHARGEBACK",
+            )
+        else:
+            chargeback_result = await session.execute(
+                select(Transaction).where(Transaction.order_id == chargeback_order.id)
+            )
+            chargeback_transaction = chargeback_result.scalar_one()
         transactions_by_status[TransactionStatusEnum.CHARGEBACK] = chargeback_transaction
 
         # Uma fila auditável de reconciliação cobre todos os estados do enum sem
