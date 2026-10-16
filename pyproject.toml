@@ -17,7 +17,7 @@ dependencies = [
     "pydantic-settings>=2.2.0",   # Para ler o arquivo .env de forma segura
     "python-multipart>=0.0.9",    # Necessário para receber formulários/arquivos (ex: upload de imagens)
     # Banco de Dados e ORM
-    "sqlalchemy>=2.0.30",         # Sintaxe 2.0 moderna e tipada
+    "sqlalchemy[asyncio]>=2.1.4",  # Sintaxe 2.0 tipada; [asyncio] traz o greenlet
     "alembic>=1.13.1",            # Controle de versão do banco (Migrations)
     "asyncpg>=0.29.0",            # Driver assíncrono nativo para o PostgreSQL voar
     # Segurança e Autenticação
