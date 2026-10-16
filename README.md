@@ -60,8 +60,16 @@ MERCADO_PAGO_FRONTEND_BASE_URL=https://loja.exemplo.com
 
 ## Rate limiting distribuído
 
-O rate limiting é independente da Vercel e usa Redis REST compatível com Upstash.
-Ele é opt-in: configure **ambas** as variáveis abaixo para ativá-lo; sem as duas,
+O rate limiting é independente da Vercel e suporta dois backends Redis:
+
+1. **Redis TCP** (ex.: Redis Cloud da integração Vercel): defina
+   `RATE_LIMIT_REDIS_URL` (`redis://` ou `rediss://user:senha@host:porta`) ou a env
+   `STORAGE_REDIS_URL`, aceita como alias. A URL contém senha e nunca é logada.
+2. **Redis REST** (Upstash): defina `RATE_LIMIT_REDIS_REST_URL` e
+   `RATE_LIMIT_REDIS_REST_TOKEN`.
+
+Precedência: se a URL TCP estiver definida, ela é usada; senão, REST; senão, desabilitado.
+É opt-in: sem nenhum backend configurado (ou REST incompleto),
 a API emite um warning único na inicialização
 (`rate_limit_disabled reason=missing_redis_configuration`) e opera fail-open para
 não indisponibilizar o checkout.
@@ -79,6 +87,9 @@ Se o Redis falhar, a API segue fail-open e pula o Redis por
 `rate_limit_fail_open` no máximo uma vez por janela.
 
 ```env
+# Opção 1 (TCP, precedência):
+RATE_LIMIT_REDIS_URL=rediss://user:senha@host:6380
+# Opção 2 (REST):
 RATE_LIMIT_REDIS_REST_URL=https://seu-redis.upstash.io
 RATE_LIMIT_REDIS_REST_TOKEN=token-do-redis
 RATE_LIMIT_TRUST_PROXY_HEADERS=true

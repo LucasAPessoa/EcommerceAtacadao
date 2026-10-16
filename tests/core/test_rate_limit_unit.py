@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -6,11 +8,14 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from redis import exceptions as redis_exceptions
 
+from src.core.config import Settings
 from src.core.rate_limit import (
     ROUTE_POLICIES,
     RateLimitMiddleware,
     RedisRestRateLimiter,
+    RedisTcpRateLimiter,
     client_ip,
     enforce_verified_webhook_rate_limit,
 )
@@ -299,3 +304,206 @@ async def test_http_client_is_reused_and_closed(monkeypatch) -> None:
     await limiter.aclose()
 
     assert calls == ["init", "close"]
+
+
+# --- Redis TCP -------------------------------------------------------------
+
+TCP_URL = "rediss://default:s3cr3t-pass@redis-host.example.com:6380"
+
+
+@pytest.mark.asyncio
+async def test_tcp_limit_blocks_after_policy_limit_via_fake_executor() -> None:
+    responses = iter(([1, 60], [11, 42]))
+    executor = AsyncMock(side_effect=lambda _command: next(responses))
+    limiter = RedisTcpRateLimiter(TCP_URL, executor=executor)
+    policy = ROUTE_POLICIES["/api/v1/auth/login"]
+
+    allowed = await limiter.check(policy, "203.0.113.9")
+    denied = await limiter.check(policy, "203.0.113.9")
+
+    assert allowed.allowed is True
+    assert denied.allowed is False
+    assert denied.retry_after_seconds == 42
+    command = executor.await_args.args[0]
+    assert command[0] == "EVAL"
+    assert command[1] == RedisRestRateLimiter._COUNTER_SCRIPT
+    assert "203.0.113.9" not in str(command)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        redis_exceptions.ConnectionError("down"),
+        OSError("refused"),
+        asyncio.TimeoutError(),
+        RuntimeError("Event loop is closed"),
+    ],
+)
+async def test_tcp_failure_fails_open_with_cooldown_and_single_log(error, caplog) -> None:
+    now = [100.0]
+    executor = AsyncMock(side_effect=error)
+    limiter = RedisTcpRateLimiter(
+        TCP_URL, executor=executor, failure_cooldown_seconds=30, clock=lambda: now[0]
+    )
+    policy = ROUTE_POLICIES["/api/v1/auth/login"]
+
+    with caplog.at_level(logging.WARNING, logger="ecommerce_atacadao.rate_limit"):
+        for _ in range(3):
+            assert (await limiter.check(policy, "203.0.113.9")).allowed is True
+        assert executor.await_count == 1
+        now[0] += 31
+        await limiter.check(policy, "203.0.113.9")
+
+    assert executor.await_count == 2
+    assert sum("rate_limit_fail_open" in r.getMessage() for r in caplog.records) == 2
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "s3cr3t-pass" not in text and "redis-host" not in text and "203.0.113.9" not in text
+
+
+@pytest.mark.asyncio
+async def test_tcp_client_is_lazy_reused_discarded_on_error_and_closed(monkeypatch) -> None:
+    created: list[object] = []
+
+    class FakeRedis:
+        def __init__(self, fail: bool) -> None:
+            self.fail = fail
+            self.closed = False
+
+        async def eval(self, *_a):
+            if self.fail:
+                raise redis_exceptions.ConnectionError("down")
+            return [1, 60]
+
+        async def aclose(self, **_kw) -> None:
+            self.closed = True
+
+    def fake_redis(*, connection_pool, **_kw):
+        kw = connection_pool.connection_kwargs
+        assert connection_pool.max_connections == 10
+        assert kw["socket_connect_timeout"] <= 1.0 and kw["socket_timeout"] <= 1.0
+        assert kw["health_check_interval"] > 0
+        client = FakeRedis(fail=len(created) == 0)
+        created.append(client)
+        return client
+
+    monkeypatch.setattr("src.core.rate_limit.Redis", fake_redis)
+    now = [0.0]
+    limiter = RedisTcpRateLimiter(TCP_URL, failure_cooldown_seconds=10, clock=lambda: now[0])
+    policy = ROUTE_POLICIES["/api/v1/auth/login"]
+    assert created == []
+
+    await limiter.check(policy, "1.1.1.1")  # falha: descarta o client
+    await asyncio.sleep(0)
+    assert created[0].closed is True
+    now[0] += 11
+    await limiter.check(policy, "1.1.1.1")
+    await limiter.check(policy, "1.1.1.1")
+    assert len(created) == 2
+    await limiter.aclose()
+    assert created[1].closed is True
+
+
+def _settings(monkeypatch, **env):
+    for key in ("RATE_LIMIT_REDIS_URL", "STORAGE_REDIS_URL", "RATE_LIMIT_REDIS_REST_URL"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in {
+        "DATABASE_URL": "postgresql+asyncpg://ci:ci@localhost:5432/ci",
+        "SECRET_KEY": "x",
+        "REFRESH_SECRET_KEY": "y",
+        "MELHOR_ENVIO_TOKEN": "t",
+        "MELHOR_ENVIO_USER_AGENT": "a",
+        "STORE_ORIGIN_ZIP_CODE": "01001000",
+        **env,
+    }.items():
+        monkeypatch.setenv(key, value)
+    return Settings(_env_file=None)
+
+
+def test_settings_accept_storage_redis_url_alias(monkeypatch) -> None:
+    assert _settings(monkeypatch, STORAGE_REDIS_URL=TCP_URL).RATE_LIMIT_REDIS_URL == TCP_URL
+    assert _settings(monkeypatch, RATE_LIMIT_REDIS_URL=TCP_URL).RATE_LIMIT_REDIS_URL == TCP_URL
+    assert _settings(monkeypatch).RATE_LIMIT_REDIS_URL == ""
+
+
+def test_backend_selection_prefers_tcp_over_rest(monkeypatch) -> None:
+    from src import main
+
+    both = _settings(
+        monkeypatch,
+        STORAGE_REDIS_URL=TCP_URL,
+        RATE_LIMIT_REDIS_REST_URL="https://r.example",
+        RATE_LIMIT_REDIS_REST_TOKEN="tok",
+    )
+    monkeypatch.setattr(main, "settings", both)
+    assert isinstance(main.build_rate_limiter(), RedisTcpRateLimiter)
+
+    rest = _settings(
+        monkeypatch,
+        RATE_LIMIT_REDIS_REST_URL="https://r.example",
+        RATE_LIMIT_REDIS_REST_TOKEN="tok",
+    )
+    monkeypatch.setattr(main, "settings", rest)
+    limiter = main.build_rate_limiter()
+    assert isinstance(limiter, RedisRestRateLimiter) and limiter.enabled
+
+    monkeypatch.setattr(main, "settings", _settings(monkeypatch))
+    assert main.build_rate_limiter().enabled is False
+
+
+@pytest.mark.asyncio
+async def test_tcp_hanging_operation_fails_open_within_timeout() -> None:
+    async def hang(_command):
+        await asyncio.sleep(30)
+
+    class HangingRedis:
+        async def eval(self, *_a):
+            await hang(None)
+
+        async def aclose(self, **_kw) -> None: ...
+
+    limiter = RedisTcpRateLimiter(TCP_URL, timeout_seconds=0.1)
+    limiter._client = HangingRedis()  # type: ignore[assignment]
+    started = time.monotonic()
+    result = await limiter.check(ROUTE_POLICIES["/api/v1/auth/login"], "1.1.1.1")
+
+    assert result.allowed is True
+    assert time.monotonic() - started < 0.5
+    assert limiter._client is None
+    await limiter.aclose()
+    assert not limiter._close_tasks
+
+
+@pytest.mark.asyncio
+async def test_tcp_pool_exhaustion_does_not_discard_client_nor_open_cooldown(caplog) -> None:
+    class BusyRedis:
+        calls = 0
+
+        async def eval(self, *_a):
+            BusyRedis.calls += 1
+            raise redis_exceptions.ConnectionError("No connection available.")
+
+        async def aclose(self, **_kw) -> None: ...
+
+    limiter = RedisTcpRateLimiter(TCP_URL, clock=lambda: 0.0)
+    client = BusyRedis()
+    limiter._client = client  # type: ignore[assignment]
+    policy = ROUTE_POLICIES["/api/v1/auth/login"]
+
+    with caplog.at_level(logging.WARNING, logger="ecommerce_atacadao.rate_limit"):
+        for _ in range(3):
+            assert (await limiter.check(policy, "1.1.1.1")).allowed is True
+
+    assert BusyRedis.calls == 3  # sem cooldown global
+    assert limiter._client is client  # client preservado
+    messages = [r.getMessage() for r in caplog.records]
+    assert sum("rate_limit_pool_exhausted" in m for m in messages) == 1
+    assert not any("rate_limit_fail_open" in m for m in messages)
+
+
+def test_tcp_uses_small_blocking_pool_without_internal_retries(monkeypatch) -> None:
+    limiter = RedisTcpRateLimiter(TCP_URL)
+    pool = limiter._get_client().connection_pool
+    assert pool.max_connections == 10
+    assert pool.timeout == 0.2
+    assert pool.connection_kwargs.get("retry_on_timeout") is False

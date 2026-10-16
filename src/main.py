@@ -9,7 +9,12 @@ from sqlalchemy.exc import IntegrityError
 
 from src.api.v1.endpoints.router import api_router as router
 from src.core.config import settings
-from src.core.rate_limit import RateLimitMiddleware, RedisRestRateLimiter
+from src.core.rate_limit import (
+    BaseRedisRateLimiter,
+    RateLimitMiddleware,
+    RedisRestRateLimiter,
+    RedisTcpRateLimiter,
+)
 
 logger = logging.getLogger("ecommerce_atacadao")
 
@@ -36,11 +41,22 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-app.state.rate_limiter = RedisRestRateLimiter(
-    settings.RATE_LIMIT_REDIS_REST_URL,
-    settings.RATE_LIMIT_REDIS_REST_TOKEN,
-    failure_cooldown_seconds=settings.RATE_LIMIT_FAILURE_COOLDOWN_SECONDS,
-)
+
+def build_rate_limiter() -> BaseRedisRateLimiter:
+    """Redis TCP tem precedência; senão REST; sem nenhum, limiter desabilitado."""
+    if settings.RATE_LIMIT_REDIS_URL.strip():
+        return RedisTcpRateLimiter(
+            settings.RATE_LIMIT_REDIS_URL,
+            failure_cooldown_seconds=settings.RATE_LIMIT_FAILURE_COOLDOWN_SECONDS,
+        )
+    return RedisRestRateLimiter(
+        settings.RATE_LIMIT_REDIS_REST_URL,
+        settings.RATE_LIMIT_REDIS_REST_TOKEN,
+        failure_cooldown_seconds=settings.RATE_LIMIT_FAILURE_COOLDOWN_SECONDS,
+    )
+
+
+app.state.rate_limiter = build_rate_limiter()
 app.state.rate_limit_trust_proxy_headers = settings.RATE_LIMIT_TRUST_PROXY_HEADERS
 app.state.rate_limit_client_ip_header = settings.RATE_LIMIT_CLIENT_IP_HEADER
 app.add_middleware(
