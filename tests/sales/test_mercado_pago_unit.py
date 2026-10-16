@@ -343,6 +343,9 @@ async def test_refunded_webhook_is_applied_after_prior_approval() -> None:
         get_reconciliation_for_order=AsyncMock(return_value=reconciliation),
         get_refund_for_transaction=AsyncMock(return_value=None),
         get_by_id=AsyncMock(return_value=order),
+        restore_confirmed_stock=AsyncMock(),
+        release_active_reservations=AsyncMock(),
+        update_status=AsyncMock(),
         session=SimpleNamespace(flush=AsyncMock()),
     )
     client = SimpleNamespace(
@@ -481,6 +484,9 @@ async def test_refunded_webhook_completes_existing_refund_audit() -> None:
         get_reconciliation_for_order=AsyncMock(return_value=reconciliation),
         get_refund_for_transaction=AsyncMock(return_value=refund),
         get_by_id=AsyncMock(return_value=order),
+        restore_confirmed_stock=AsyncMock(),
+        release_active_reservations=AsyncMock(),
+        update_status=AsyncMock(),
         session=SimpleNamespace(flush=AsyncMock()),
     )
     client = SimpleNamespace(
@@ -503,7 +509,12 @@ async def test_refunded_webhook_completes_existing_refund_audit() -> None:
 @pytest.mark.asyncio
 async def test_requested_refund_without_provider_id_retries_with_same_key() -> None:
     order_id, transaction_id = uuid4(), uuid4()
-    transaction = SimpleNamespace(id=transaction_id, gateway_ref_id="ORD-1", amount="42.50")
+    transaction = SimpleNamespace(
+        id=transaction_id,
+        gateway_ref_id="ORD-1",
+        amount="42.50",
+        status=TransactionStatusEnum.APPROVED,
+    )
     reconciliation = SimpleNamespace(outcome=None, status=None)
     refund = SimpleNamespace(
         gateway_ref_id=None,
@@ -517,7 +528,10 @@ async def test_requested_refund_without_provider_id_retries_with_same_key() -> N
         get_transaction_for_mercado_pago_order=AsyncMock(return_value=transaction),
         get_reconciliation_for_order=AsyncMock(return_value=reconciliation),
         get_refund_for_reconciliation=AsyncMock(return_value=refund),
-        session=SimpleNamespace(commit=AsyncMock(), flush=AsyncMock()),
+        get_by_id=AsyncMock(
+            return_value=SimpleNamespace(status=OrderStatusEnum.PAYMENT_RECONCILIATION)
+        ),
+        session=SimpleNamespace(commit=AsyncMock(), flush=AsyncMock(), refresh=AsyncMock()),
     )
     client = SimpleNamespace(
         get_order=AsyncMock(return_value={"transactions": {"refunds": []}}),
@@ -535,7 +549,12 @@ async def test_requested_refund_without_provider_id_retries_with_same_key() -> N
 @pytest.mark.asyncio
 async def test_refund_gateway_failure_keeps_retry_metadata() -> None:
     order_id, transaction_id = uuid4(), uuid4()
-    transaction = SimpleNamespace(id=transaction_id, gateway_ref_id="ORD-1", amount="42.50")
+    transaction = SimpleNamespace(
+        id=transaction_id,
+        gateway_ref_id="ORD-1",
+        amount="42.50",
+        status=TransactionStatusEnum.APPROVED,
+    )
     reconciliation = SimpleNamespace(outcome=None, status=None)
     refund = SimpleNamespace(
         gateway_ref_id=None,
@@ -549,7 +568,10 @@ async def test_refund_gateway_failure_keeps_retry_metadata() -> None:
         get_transaction_for_mercado_pago_order=AsyncMock(return_value=transaction),
         get_reconciliation_for_order=AsyncMock(return_value=reconciliation),
         get_refund_for_reconciliation=AsyncMock(return_value=refund),
-        session=SimpleNamespace(commit=AsyncMock()),
+        get_by_id=AsyncMock(
+            return_value=SimpleNamespace(status=OrderStatusEnum.PAYMENT_RECONCILIATION)
+        ),
+        session=SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock()),
     )
     client = SimpleNamespace(get_order=AsyncMock(side_effect=MercadoPagoError("unavailable")))
 
