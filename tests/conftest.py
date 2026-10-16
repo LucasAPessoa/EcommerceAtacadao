@@ -15,6 +15,18 @@ or rely on idempotent flows.
 
 from __future__ import annotations
 
+import os
+
+# Isola testes de um Redis real herdado do ambiente (rate limit), salvo opt-in explícito.
+if os.environ.get("TEST_ALLOW_REAL_REDIS") != "1":
+    for _name in (
+        "STORAGE_REDIS_URL",
+        "RATE_LIMIT_REDIS_URL",
+        "RATE_LIMIT_REDIS_REST_URL",
+        "RATE_LIMIT_REDIS_REST_TOKEN",
+    ):
+        os.environ.pop(_name, None)
+
 import asyncio
 from typing import Any, AsyncIterator, Dict, Optional
 

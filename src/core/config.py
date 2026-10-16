@@ -1,7 +1,7 @@
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # Vazio desabilita o endpoint interno de manutenção de pagamentos (404).
     MAINTENANCE_JOB_TOKEN: str = ""
     CORS_ALLOWED_ORIGINS: str = ""
+    # Redis TCP (redis:// ou rediss://); aceita STORAGE_REDIS_URL (integração Vercel).
+    # Tem precedência sobre o backend REST quando definido.
+    RATE_LIMIT_REDIS_URL: str = Field(
+        default="",
+        validation_alias=AliasChoices("RATE_LIMIT_REDIS_URL", "STORAGE_REDIS_URL"),
+    )
     RATE_LIMIT_REDIS_REST_URL: str = ""
     RATE_LIMIT_REDIS_REST_TOKEN: str = ""
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
