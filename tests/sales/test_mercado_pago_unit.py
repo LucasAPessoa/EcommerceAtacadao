@@ -36,14 +36,15 @@ async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
     monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
     monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
     order = SimpleNamespace(
-        id=uuid4(), order_code="PED-TEST-0001", currency="BRL", total_amount="42.50"
+        id=uuid4(), order_code="PED-TEST-0001",
+        status=OrderStatusEnum.PENDING_PAYMENT, currency="BRL", total_amount="42.50",
     )
     transaction = SimpleNamespace(
         gateway_provider="LOCAL", checkout_url=None, status=TransactionStatusEnum.PENDING
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
-        session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock()),
+        session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
     )
     provider_order = {
         "id": "ORD-1",
@@ -97,7 +98,10 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
 ) -> None:
     monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
     monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
-    order = SimpleNamespace(id=uuid4(), order_code="PED-1", currency="BRL", total_amount="10.00")
+    order = SimpleNamespace(
+        id=uuid4(), order_code="PED-1", status=OrderStatusEnum.PENDING_PAYMENT,
+        currency="BRL", total_amount="10.00",
+    )
     transaction = SimpleNamespace(
         gateway_provider="MERCADO_PAGO_PREPARING",
         checkout_url=None,
@@ -105,7 +109,7 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
-        session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock()),
+        session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
     )
     client = SimpleNamespace(
         validate_config=Mock(),
