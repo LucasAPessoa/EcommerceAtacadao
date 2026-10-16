@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     MERCADO_PAGO_NOTIFICATION_URL: str = ""
     MERCADO_PAGO_FRONTEND_BASE_URL: str = ""
     MERCADO_PAGO_BASE_URL: str = "https://api.mercadopago.com"
+    MERCADO_PAGO_ORDER_EXPIRATION_ENABLED: bool = True
+    MERCADO_PAGO_CANCEL_RETRY_HOURS: int = 24
+    MERCADO_PAGO_CANCEL_MAX_ATTEMPTS: int = 8
+    MERCADO_PAGO_EXPIRATION_GRACE_SECONDS: int = 120
+    # Vazio desabilita o endpoint interno de manutenção de pagamentos (404).
+    MAINTENANCE_JOB_TOKEN: str = ""
     CORS_ALLOWED_ORIGINS: str = ""
     RATE_LIMIT_REDIS_REST_URL: str = ""
     RATE_LIMIT_REDIS_REST_TOKEN: str = ""

@@ -1,6 +1,6 @@
 import logging
 from datetime import UTC, datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from src.integrations.mercado_pago.client import MercadoPagoClient
@@ -70,6 +70,7 @@ class OrderService:
                 "Pedidos pagos exigem um fluxo de reembolso."
             )
         remote_order_ids: list[str] = []
+        remote_transactions: list[Any] = []
         creation_pending = False
         for transaction in order.transactions:
             if transaction.gateway_provider not in {"MERCADO_PAGO", "MERCADO_PAGO_PREPARING"}:
@@ -81,6 +82,7 @@ class OrderService:
                 creation_pending = True
             if transaction.gateway_ref_id:
                 remote_order_ids.append(str(transaction.gateway_ref_id))
+                remote_transactions.append(transaction)
             if transaction.status in {
                 TransactionStatusEnum.PENDING,
                 TransactionStatusEnum.PROCESSING,
@@ -109,6 +111,9 @@ class OrderService:
                         type(exc).__name__,
                     )
             if confirmed:
+                confirmed_at = datetime.now(UTC).replace(tzinfo=None)
+                for transaction in remote_transactions:
+                    transaction.cancel_confirmed_at = confirmed_at
                 # Commit 2 (curto).
                 await self.repository.release_active_reservations(
                     order.id, datetime.now(UTC).replace(tzinfo=None)

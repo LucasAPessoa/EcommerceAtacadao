@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,7 @@ from src.models.enums import (
     PaymentMethodEnum,
     ReconciliationReasonEnum,
     StockReservationStatusEnum,
+    TransactionStatusEnum,
 )
 from src.models.identity import Address
 from src.models.operations import PaymentReconciliation, Refund, Transaction
@@ -196,6 +197,113 @@ class OrderRepository:
         )
         result = await self.session.execute(query)
         return int(result.scalar_one())
+
+    async def get_earliest_active_reservation_expiry(self, order_id: UUID) -> Optional[datetime]:
+        query = select(func.min(StockReservation.expires_at)).where(
+            StockReservation.order_id == order_id,
+            StockReservation.status == StockReservationStatusEnum.ACTIVE,
+        )
+        return (await self.session.execute(query)).scalar_one_or_none()
+
+    async def list_abandoned_order_ids(self, expired_before: datetime, limit: int) -> List[UUID]:
+        """Pedidos aguardando pagamento cujas reservas ACTIVE venceram todas até `expired_before`
+        (agora menos a tolerância da Order remota)."""
+        now = expired_before
+        expired = exists().where(
+            StockReservation.order_id == Order.id,
+            StockReservation.status == StockReservationStatusEnum.ACTIVE,
+            StockReservation.expires_at <= now,
+        )
+        live = exists().where(
+            StockReservation.order_id == Order.id,
+            StockReservation.status == StockReservationStatusEnum.ACTIVE,
+            StockReservation.expires_at > now,
+        )
+        query = (
+            select(Order.id)
+            .where(Order.status == OrderStatusEnum.PENDING_PAYMENT, expired, ~live)
+            .order_by(Order.created_at)
+            .limit(limit)
+        )
+        return list((await self.session.execute(query)).scalars().all())
+
+    async def list_stale_reservation_order_ids(self, now: datetime, limit: int) -> List[UUID]:
+        """Pedidos CANCELED/EXPIRED que ainda mantêm reservas ACTIVE vencidas."""
+        query = (
+            select(StockReservation.order_id)
+            .join(Order, Order.id == StockReservation.order_id)
+            .where(
+                StockReservation.status == StockReservationStatusEnum.ACTIVE,
+                StockReservation.expires_at <= now,
+                Order.status.in_([OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED]),
+            )
+            .distinct()
+            .limit(limit)
+        )
+        return list((await self.session.execute(query)).scalars().all())
+
+    async def list_cancel_retry_order_ids(
+        self, now: datetime, window_start: datetime, max_attempts: int, limit: int
+    ) -> List[UUID]:
+        """Pedidos CANCELED/EXPIRED com ref MP cujo cancel remoto segue sem confirmação."""
+        canceled_in_window = exists().where(
+            OrderStatusHistory.order_id == Order.id,
+            OrderStatusHistory.new_status.in_([OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED]),
+            OrderStatusHistory.created_at >= window_start,
+        )
+        query = (
+            select(Order.id)
+            .join(Transaction, Transaction.order_id == Order.id)
+            .where(
+                Order.status.in_([OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED]),
+                Transaction.gateway_provider == "MERCADO_PAGO",
+                Transaction.gateway_ref_id.is_not(None),
+                Transaction.status != TransactionStatusEnum.APPROVED,
+                Transaction.cancel_confirmed_at.is_(None),
+                func.coalesce(Transaction.cancel_attempts, 0) < max_attempts,
+                func.coalesce(Transaction.cancel_last_error_code, "") != "provider_terminal",
+                canceled_in_window,
+                # Backoff exponencial: 1, 2, 4, 8... minutos após a última tentativa.
+                or_(
+                    func.coalesce(Transaction.cancel_attempts, 0) == 0,
+                    Transaction.cancel_last_attempt_at.is_(None),
+                    Transaction.cancel_last_attempt_at
+                    + func.power(2, Transaction.cancel_attempts - 1)
+                    * literal_column("interval '1 minute'")
+                    <= now,
+                ),
+            )
+            .order_by(Order.created_at)
+            .limit(limit)
+        )
+        return list((await self.session.execute(query)).scalars().all())
+
+    async def expire_active_reservations(self, order_id: UUID, now: datetime) -> int:
+        """ACTIVE vencidas -> EXPIRED (terminal); devolve quantas mudaram."""
+        query = (
+            select(StockReservation)
+            .where(
+                StockReservation.order_id == order_id,
+                StockReservation.status == StockReservationStatusEnum.ACTIVE,
+                StockReservation.expires_at <= now,
+            )
+            .with_for_update()
+        )
+        reservations = list((await self.session.execute(query)).scalars().all())
+        for reservation in reservations:
+            reservation.status = StockReservationStatusEnum.EXPIRED
+            reservation.released_at = now
+            self.session.add(reservation)
+        await self.session.flush()
+        return len(reservations)
+
+    async def count_live_active_reservations(self, order_id: UUID, now: datetime) -> int:
+        query = select(func.count()).where(
+            StockReservation.order_id == order_id,
+            StockReservation.status == StockReservationStatusEnum.ACTIVE,
+            StockReservation.expires_at > now,
+        )
+        return int((await self.session.execute(query)).scalar_one())
 
     async def list_by_user(self, user_id: UUID, skip: int = 0, limit: int = 100) -> List[Order]:
         query = (

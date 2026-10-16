@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -42,7 +43,28 @@ class MercadoPagoCheckoutService:
         self.client = client or MercadoPagoClient()
 
     @staticmethod
-    def _order_payload(order: Any, payer_email: str) -> dict[str, Any]:
+    def _expiration_time(
+        reservation_expires_at: datetime | None, order_created_at: datetime | None
+    ) -> str:
+        """Duração ISO 8601 derivada só de datas persistidas (corpo idêntico em retries).
+
+        Piso em minutos para a Order remota nunca viver além da reserva; mínimo 1.
+        """
+        if reservation_expires_at is None or order_created_at is None:
+            minutes = settings.STOCK_RESERVATION_MINUTES
+        else:
+            seconds = (
+                reservation_expires_at.replace(tzinfo=None) - order_created_at.replace(tzinfo=None)
+            ).total_seconds()
+            minutes = math.floor(seconds / 60)
+        return f"PT{max(1, minutes)}M"
+
+    @staticmethod
+    def _order_payload(
+        order: Any,
+        payer_email: str,
+        reservation_expires_at: datetime | None = None,
+    ) -> dict[str, Any]:
         """Monta uma Order do provedor apenas com o snapshot persistido localmente."""
         return_base_url = settings.MERCADO_PAGO_FRONTEND_BASE_URL.rstrip("/")
         order_id = str(order.id)
@@ -52,7 +74,7 @@ class MercadoPagoCheckoutService:
                 f"{return_base_url}/pagamento/retorno?order_id={order_id}&status={payment_status}"
             )
 
-        return {
+        payload: dict[str, Any] = {
             "type": "online",
             "processing_mode": "manual",
             "total_amount": f"{Decimal(order.total_amount):.2f}",
@@ -77,6 +99,12 @@ class MercadoPagoCheckoutService:
                 },
             },
         }
+        if settings.MERCADO_PAGO_ORDER_EXPIRATION_ENABLED:
+            # O link não pode sobreviver à reserva de estoque.
+            payload["expiration_time"] = MercadoPagoCheckoutService._expiration_time(
+                reservation_expires_at, getattr(order, "created_at", None)
+            )
+        return payload
 
     async def start_checkout(
         self,
@@ -109,14 +137,30 @@ class MercadoPagoCheckoutService:
                 checkout_url=transaction.checkout_url,
                 payment_status=transaction.status,
             )
+        # Pedido já cancelado/expirado ou sem reserva viva: não crie Order remota pagável.
+        # A validação vem antes de marcar PREPARING para não deixar a transação presa
+        # nesse estado quando o checkout é recusado.
+        if (
+            order.status != OrderStatusEnum.PENDING_PAYMENT
+            or await self.repository.count_live_active_reservations(
+                order.id, datetime.now(UTC).replace(tzinfo=None)
+            )
+            == 0
+        ):
+            await self.repository.session.rollback()
+            raise ValueError("Pedido não está mais disponível para pagamento.")
         if transaction.gateway_provider != "MERCADO_PAGO_PREPARING":
             transaction.gateway_provider = "MERCADO_PAGO_PREPARING"
             transaction.gateway_status_detail = "checkout_creation_pending"
         # Não mantenha locks de carrinho/transação durante a chamada remota,
         # inclusive em uma tentativa recuperada no estado PREPARING.
         await self.repository.session.commit()
+        reservation_expires_at = await self.repository.get_earliest_active_reservation_expiry(
+            order.id
+        )
         provider_order = await self.client.create_order(
-            self._order_payload(order, payer_email), str(idempotency_key)
+            self._order_payload(order, payer_email, reservation_expires_at),
+            str(idempotency_key),
         )
         if (
             provider_order.get("external_reference") != str(order.id)
@@ -130,7 +174,7 @@ class MercadoPagoCheckoutService:
         await self.repository.get_transaction_for_order(order.id)
         await session.refresh(order, attribute_names=["status"])
         await session.refresh(transaction)
-        if order.status == OrderStatusEnum.CANCELED:
+        if order.status in {OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED}:
             # Persista a ref para a guarda do webhook; a Order remota não pode
             # ficar pagável nem devolvemos a URL.
             transaction.gateway_provider = "MERCADO_PAGO"
@@ -238,7 +282,10 @@ class MercadoPagoCheckoutService:
                 return
             await self._reconcile_confirmed_payment(order, transaction, reconciliation)
             return
-        if order.status == OrderStatusEnum.CANCELED and transaction_status in {
+        if order.status in {
+            OrderStatusEnum.CANCELED,
+            OrderStatusEnum.EXPIRED,
+        } and transaction_status in {
             TransactionStatusEnum.PROCESSING,
             TransactionStatusEnum.PENDING,
         }:

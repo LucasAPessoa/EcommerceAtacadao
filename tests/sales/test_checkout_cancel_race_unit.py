@@ -52,7 +52,11 @@ def _start_setup(canceled_meanwhile: bool):
 
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
-        session=SimpleNamespace(flush=AsyncMock(), commit=commit, refresh=refresh),
+        get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
+        count_live_active_reservations=AsyncMock(return_value=1),
+        session=SimpleNamespace(
+            flush=AsyncMock(), commit=commit, refresh=refresh, rollback=AsyncMock()
+        ),
     )
     client = SimpleNamespace(
         validate_config=Mock(),
@@ -143,6 +147,8 @@ def _cancel_setup(ref: str | None):
         get_by_id=AsyncMock(return_value=order),
         update_status=update_status,
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
+        count_live_active_reservations=AsyncMock(return_value=1),
         release_active_reservations=AsyncMock(
             side_effect=lambda *a, **k: events.append("release")
         ),
@@ -183,3 +189,22 @@ async def test_cancel_preparing_with_ref_cancels_remote_after_commit(_no_schema:
 
     client.cancel_order.assert_awaited_once_with("ORD-9")
     assert events == ["commit", "remote_cancel", "release", "commit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["expired_order", "no_live_reservation"])
+async def test_start_checkout_does_not_call_provider_for_unpayable_order(scenario: str) -> None:
+    service, order, _tx, client, _events = _start_setup(canceled_meanwhile=False)
+    if scenario == "expired_order":
+        order.status = OrderStatusEnum.EXPIRED
+    else:
+        service.repository.count_live_active_reservations = AsyncMock(return_value=0)
+
+    with pytest.raises(ValueError):
+        await service.start_checkout(uuid4(), _checkout_input(), uuid4(), payer_email="a@b.com")
+
+    client.create_order.assert_not_awaited()
+    # Recusado antes de marcar PREPARING: nada é comitado e o lock é solto.
+    assert _tx.gateway_provider != "MERCADO_PAGO_PREPARING"
+    assert _events == []
+    service.repository.session.rollback.assert_awaited_once()

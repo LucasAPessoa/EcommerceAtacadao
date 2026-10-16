@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from src.api.v1.endpoints.catalog.router import catalog_router
 from src.api.v1.endpoints.sales.router import sales_router
 from src.api.v1.endpoints.operations.router import operations_router
+from src.api.v1.endpoints.internal.jobs import router as internal_jobs_router
 
 # Importamos os roteadores de identidade
 from src.api.v1.endpoints.identity.auth import router as auth_router
@@ -34,3 +35,6 @@ api_router.include_router(sales_router)
 
 # --- DOMÍNIO: OPERATIONS (Frete, Estoque) ---
 api_router.include_router(operations_router)
+
+# --- INTERNO: jobs de manutenção (token de serviço) ---
+api_router.include_router(internal_jobs_router)

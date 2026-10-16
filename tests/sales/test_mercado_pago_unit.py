@@ -44,6 +44,8 @@ async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
+        count_live_active_reservations=AsyncMock(return_value=1),
         session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
     )
     provider_order = {
@@ -109,6 +111,8 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
+        count_live_active_reservations=AsyncMock(return_value=1),
         session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
     )
     client = SimpleNamespace(

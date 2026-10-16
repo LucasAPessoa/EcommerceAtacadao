@@ -43,6 +43,9 @@ ROUTE_POLICIES: dict[str, RateLimitPolicy] = {
     "/api/v1/sales/checkout/mercado-pago": RateLimitPolicy(
         "checkout.mercado_pago", limit=10, window_seconds=60
     ),
+    "/api/v1/internal/jobs/payment-maintenance": RateLimitPolicy(
+        "internal.payment_maintenance", limit=30, window_seconds=60
+    ),
     "/api/v1/sales/checkout/mercado-pago/webhook": RateLimitPolicy(
         "webhook.mercado_pago", limit=240, window_seconds=60, defer_until_verified=True
     ),
