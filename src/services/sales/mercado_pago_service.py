@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -21,6 +22,8 @@ from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.sales.checkout_schema import MercadoPagoCheckoutSchema
 from src.schemas.sales.mercado_pago_schema import MercadoPagoCheckoutResponseSchema
 from src.services.sales.checkout_service import CheckoutService
+
+logger = logging.getLogger(__name__)
 
 
 class MercadoPagoWebhookError(ValueError):
@@ -121,6 +124,27 @@ class MercadoPagoCheckoutService:
             or provider_order.get("currency") != order.currency
         ):
             raise MercadoPagoError("Order de pagamento inconsistente.")
+        # Releia sob o lock da transação: um cancelamento pode ter sido
+        # confirmado enquanto a Order remota era criada.
+        session = self.repository.session
+        await self.repository.get_transaction_for_order(order.id)
+        await session.refresh(order, attribute_names=["status"])
+        await session.refresh(transaction)
+        if order.status == OrderStatusEnum.CANCELED:
+            # Persista a ref para a guarda do webhook; a Order remota não pode
+            # ficar pagável nem devolvemos a URL.
+            transaction.gateway_provider = "MERCADO_PAGO"
+            transaction.gateway_ref_id = str(provider_order["id"])
+            await session.commit()
+            try:
+                await self.client.cancel_order(str(provider_order["id"]))
+            except Exception as exc:
+                logger.warning(
+                    "mercado_pago_cancel_failed order_id=%s error=%s",
+                    order.id,
+                    type(exc).__name__,
+                )
+            raise ValueError("Pedido cancelado durante a criação do pagamento.")
         transaction.gateway_provider = "MERCADO_PAGO"
         transaction.gateway_ref_id = str(provider_order["id"])
         transaction.checkout_url = str(provider_order["checkout_url"])

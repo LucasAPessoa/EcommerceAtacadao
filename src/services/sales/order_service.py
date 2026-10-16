@@ -70,9 +70,15 @@ class OrderService:
                 "Pedidos pagos exigem um fluxo de reembolso."
             )
         remote_order_ids: list[str] = []
+        creation_pending = False
         for transaction in order.transactions:
-            if transaction.gateway_provider != "MERCADO_PAGO":
+            if transaction.gateway_provider not in {"MERCADO_PAGO", "MERCADO_PAGO_PREPARING"}:
                 continue
+            if transaction.gateway_provider == "MERCADO_PAGO_PREPARING" and not (
+                transaction.gateway_ref_id
+            ):
+                # O checkout ainda cria a Order remota; ele a cancelará ao reler o pedido.
+                creation_pending = True
             if transaction.gateway_ref_id:
                 remote_order_ids.append(str(transaction.gateway_ref_id))
             if transaction.status in {
@@ -81,7 +87,10 @@ class OrderService:
             }:
                 transaction.status = TransactionStatusEnum.CANCELED
         await self.repository.update_status(order, OrderStatusEnum.CANCELED, current_user.id)
-        if not remote_order_ids:
+        if creation_pending:
+            # Reservas ficam até o TTL, como no cancel remoto falho.
+            logger.warning("mercado_pago_cancel_pending_creation order_id=%s", order_id)
+        elif not remote_order_ids:
             await self.repository.release_active_reservations(order.id, now)
         await self.repository.session.commit()
 

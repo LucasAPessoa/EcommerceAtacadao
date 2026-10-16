@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -38,6 +39,8 @@ class Transaction(Base, TimestampMixin):
     __table_args__ = (
         CheckConstraint("amount >= 0", name="ck_transactions_amount_non_negative"),
         CheckConstraint("installments >= 1", name="ck_transactions_installments_positive"),
+        # Desenho: uma Transaction por pedido (criada em OrderRepository.create_order).
+        Index("uq_transactions_order_id", "order_id", unique=True),
     )
     id: Mapped[uuid.UUID] = uuid_primary_key()
     order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orders.id"))
