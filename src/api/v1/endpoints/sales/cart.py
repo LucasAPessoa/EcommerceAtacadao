@@ -36,7 +36,9 @@ async def get_cart(
     return BaseResponse(status="success", data=data)
 
 
-@router.post("/items", response_model=BaseResponse[CartResponseSchema], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/items", response_model=BaseResponse[CartResponseSchema], status_code=status.HTTP_201_CREATED
+)
 async def add_item_to_cart(
     item_in: CartItemCreateSchema,
     current_user: User = Depends(require_role(["admin", "user"])),
@@ -60,7 +62,9 @@ async def update_cart_item(
     """Atualiza a quantidade de um item do carrinho."""
     data = await service.update_item_quantity(current_user.id, item_id, item_in)
     if not data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado no carrinho.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado no carrinho."
+        )
     return BaseResponse(status="success", data=data)
 
 
@@ -73,7 +77,9 @@ async def remove_cart_item(
     """Remove um item do carrinho."""
     data = await service.remove_item(current_user.id, item_id)
     if not data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado no carrinho.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado no carrinho."
+        )
     return BaseResponse(status="success", data=data)
 
 

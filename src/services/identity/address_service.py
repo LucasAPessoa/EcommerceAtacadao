@@ -23,7 +23,9 @@ class AddressService:
             return None
         return AddressResponseSchema.model_validate(address)
 
-    async def create_address(self, user_id: UUID, data: AddressCreateSchema) -> AddressResponseSchema:
+    async def create_address(
+        self, user_id: UUID, data: AddressCreateSchema
+    ) -> AddressResponseSchema:
         address = await self.repository.create(user_id, data.model_dump())
         return AddressResponseSchema.model_validate(address)
 

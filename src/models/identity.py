@@ -1,11 +1,14 @@
 import uuid
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Enum as SQLEnum
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, SoftDeleteMixin, TimestampMixin, uuid_primary_key
 from .enums import UserTypeEnum
+
 
 class Role(Base, TimestampMixin):
     __tablename__ = 'roles'
@@ -23,7 +26,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     is_active: Mapped[bool] = mapped_column(default=True)
     
     # Enum aplicado para blindar o tipo de usuário
-    user_type: Mapped[UserTypeEnum] = mapped_column(SQLEnum(UserTypeEnum), default=UserTypeEnum.INDIVIDUAL)
+    user_type: Mapped[UserTypeEnum] = mapped_column(
+        SQLEnum(UserTypeEnum), default=UserTypeEnum.INDIVIDUAL
+    )
     
     # Índices adicionados para performance de busca
     cpf: Mapped[Optional[str]] = mapped_column(String(11), nullable=True, index=True)

@@ -32,7 +32,9 @@ async def list_addresses(
     return BaseResponse(status="success", data=data)
 
 
-@router.post("/", response_model=BaseResponse[AddressResponseSchema], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=BaseResponse[AddressResponseSchema], status_code=status.HTTP_201_CREATED
+)
 async def create_address(
     address_in: AddressCreateSchema,
     current_user: User = Depends(require_role(["admin", "user"])),
@@ -51,7 +53,9 @@ async def get_address(
 ):
     data = await service.get_address(current_user.id, address_id)
     if not data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado."
+        )
     return BaseResponse(status="success", data=data)
 
 
@@ -64,7 +68,9 @@ async def update_address(
 ):
     data = await service.update_address(current_user.id, address_id, address_in)
     if not data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado."
+        )
     return BaseResponse(status="success", data=data)
 
 
@@ -77,7 +83,9 @@ async def set_default_address(
     """Marca este endereço como o padrão, desmarcando os demais."""
     data = await service.set_default(current_user.id, address_id)
     if not data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado."
+        )
     return BaseResponse(status="success", data=data)
 
 
@@ -89,5 +97,7 @@ async def delete_address(
 ):
     deleted = await service.delete_address(current_user.id, address_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Endereço não encontrado."
+        )
     return BaseResponse(status="success", data={})

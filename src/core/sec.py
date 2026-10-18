@@ -72,7 +72,7 @@ async def get_current_user(
     token = credentials.credentials
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("sub")
+        email: str | None = payload.get("sub")
         if payload.get("type") == "refresh":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

@@ -60,3 +60,6 @@ select = ["E", "F", "I"] # Ativa as regras de Erros, Funcionalidades e ordena√ß√
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]

@@ -128,7 +128,7 @@ class ShippingService:
         origin_zip_code: str,
         destination_zip_code: str,
         items: List[ShippingCalculateItemSchema],
-    ) -> float:
+    ) -> Decimal:
         """Usado quando só se tem variant_id+quantity (ex: endpoint público de cotação)."""
         quotes = await self.calculate_quotes(origin_zip_code, destination_zip_code, items)
         return quotes[0].price
@@ -138,7 +138,7 @@ class ShippingService:
         origin_zip_code: str,
         destination_zip_code: str,
         products: List[MelhorEnvioProductItem],
-    ) -> float:
+    ) -> Decimal:
         """
         Usado quando quem chama já tem as variantes carregadas (ex:
         OrderService, que já buscou cada variante pra montar o pedido) —

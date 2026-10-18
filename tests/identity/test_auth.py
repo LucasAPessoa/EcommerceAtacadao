@@ -4,18 +4,17 @@ Tests for the auth module: /auth/register, /auth/login, /auth/refresh, /auth/log
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from tests.conftest import (
-    API_V1_PREFIX,
     ADMIN_CREDENTIALS,
+    API_V1_PREFIX,
     USER_CREDENTIALS,
     auth_headers,
     make_user_payload,
     unique_email,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /auth/register

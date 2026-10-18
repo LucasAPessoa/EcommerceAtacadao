@@ -21,7 +21,7 @@ class CartService:
     @staticmethod
     def _response(cart) -> CartResponseSchema:
         """Monta totais informativos com a mesma faixa atacadista usada no checkout."""
-        quantities_by_product = defaultdict(int)
+        quantities_by_product: defaultdict[UUID, int] = defaultdict(int)
         for item in cart.items:
             quantities_by_product[item.variant.product_id] += item.quantity
 
@@ -96,7 +96,7 @@ class CartService:
 
         await self.repository.update_item_quantity(item, item_in.quantity)
 
-        updated_cart = await self.repository.get_by_id(cart.id)
+        updated_cart = await self.repository.get_by_id(cart.id)  # type: ignore[union-attr]  # item só existe se cart existe
         return self._response(updated_cart)
 
     async def remove_item(self, user_id: UUID, item_id: UUID) -> Optional[CartResponseSchema]:
@@ -107,7 +107,7 @@ class CartService:
 
         await self.repository.remove_item(item)
 
-        updated_cart = await self.repository.get_by_id(cart.id)
+        updated_cart = await self.repository.get_by_id(cart.id)  # type: ignore[union-attr]  # item só existe se cart existe
         return self._response(updated_cart)
 
     async def clear_cart(self, user_id: UUID) -> CartResponseSchema:
