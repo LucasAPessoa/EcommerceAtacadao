@@ -52,6 +52,55 @@ jobs:
       - name: Executa todos os tests/**/*_unit.py
         run: uv run pytest -q $(find tests -name '*_unit.py' | sort)
 
+  integration:
+    name: Integração (Postgres + Redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Efêmeros e fictícios: serviços descartáveis do runner.
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+      SECRET_KEY: x
+      REFRESH_SECRET_KEY: y
+      MELHOR_ENVIO_TOKEN: t
+      MELHOR_ENVIO_USER_AGENT: a
+      STORE_ORIGIN_ZIP_CODE: "01001000"
+      STORAGE_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Migrações no banco vazio
+        run: uv run alembic upgrade head
+      - name: Drift entre modelos e migrações
+        run: uv run alembic check
+      - name: Testes *_integration.py (sobem o próprio Docker)
+        run: uv run pytest -q $(find tests -name '*_integration.py' | sort)
+
   report-ruff-full:
     name: Report - ruff completo (não bloqueante)
     runs-on: ubuntu-latest
