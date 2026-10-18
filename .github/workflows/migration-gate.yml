@@ -1,0 +1,62 @@
+name: Migration gate
+
+# Garante a ordem: PR de migrations -> merge -> 'Migrate production' -> PR de código.
+# Nunca acessa o banco de produção: compara o head do Alembic (offline) com a revisão
+# registrada pelo workflow 'Migrate production' como deployment `database-production`.
+on:
+  pull_request:
+
+concurrency:
+  group: migration-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Migration gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # Valores fictícios exigidos por Settings; o gate não acessa banco.
+      DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+      SECRET_KEY: ci-secret-key
+      REFRESH_SECRET_KEY: ci-refresh-key
+      MELHOR_ENVIO_TOKEN: ci-token
+      MELHOR_ENVIO_USER_AGENT: ci-agent
+      STORE_ORIGIN_ZIP_CODE: "01001000"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # HEAD é o merge commit do PR; fetch-depth 2 garante HEAD^1 (tip atual da base).
+          fetch-depth: 2
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-dev
+      - name: Coleta entradas
+        run: |
+          git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/files.txt"
+          uv run alembic heads > "$RUNNER_TEMP/heads.txt"
+          # Último deployment com status success em database-production (vazio se não há).
+          deployed=""
+          for id in $(gh api "repos/$REPO/deployments?environment=database-production&per_page=30" --jq '.[].id'); do
+            state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state // ""')
+            if [ "$state" = "success" ]; then
+              deployed=$(gh api "repos/$REPO/deployments/$id" --jq '.payload.revision // ""')
+              break
+            fi
+          done
+          if [ -n "$deployed" ] && ! [[ "$deployed" =~ ^[0-9a-f]+$ ]]; then
+            echo "::error title=Migration gate::Revisão inválida no deployment database-production." >&2
+            exit 1
+          fi
+          echo "DEPLOYED_REVISION=$deployed" >> "$GITHUB_ENV"
+      - name: Decide
+        run: python3 .github/scripts/migration_gate.py --files "$RUNNER_TEMP/files.txt" --heads "$RUNNER_TEMP/heads.txt" --deployed "$DEPLOYED_REVISION"
