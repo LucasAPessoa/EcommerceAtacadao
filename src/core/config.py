@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import AliasChoices, Field, field_validator
@@ -38,6 +39,14 @@ class Settings(BaseSettings):
 
     # Banco de Dados
     DATABASE_URL: str
+    # queue = pool na aplicação (local/dev); null = NullPool (serverless/Vercel).
+    DB_POOL_MODE: Literal["queue", "null"] = "queue"
+    DB_POOL_SIZE: int = Field(default=5, ge=1)
+    DB_MAX_OVERFLOW: int = Field(default=10, ge=0)
+    DB_POOL_RECYCLE_SECONDS: int = Field(default=-1, ge=-1)  # -1 = nunca reciclar
+    DB_POOL_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
+    # True para endpoint PgBouncer (Neon -pooler, transaction mode).
+    DB_PGBOUNCER_COMPAT: bool = False
 
     # Segurança
     SECRET_KEY: str

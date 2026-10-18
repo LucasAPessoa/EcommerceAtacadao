@@ -48,7 +48,11 @@ CORS_ALLOWED_ORIGINS=https://loja.exemplo.com
 O banco PostgreSQL deve ser externo e acessível pela `DATABASE_URL`. Execute
 `uv run alembic upgrade head` contra esse banco em um ambiente de operação ou
 CI antes de promover a API: funções serverless não devem aplicar migrations
-durante uma requisição. Depois, configure o frontend com a URL pública da API
+durante uma requisição. Na Vercel use `DB_POOL_MODE=null` (NullPool, sem
+conexões ociosas por runtime) e, com o endpoint `-pooler` do Neon (PgBouncer),
+`DB_PGBOUNCER_COMPAT=true`; a migração continua usando a URL direta. Local
+mantém `queue` (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE_SECONDS`,
+`DB_POOL_TIMEOUT_SECONDS`, sempre com `pool_pre_ping`). Depois, configure o frontend com a URL pública da API
 incluindo `/api/v1` e use essa mesma API pública no webhook do Mercado Pago.
 
 O Checkout Pro exige estas URLs públicas HTTPS:
