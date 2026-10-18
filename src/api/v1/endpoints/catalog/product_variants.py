@@ -1,13 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.product_variant_schema import (
-    ProductVariantCreateSchema, ProductVariantUpdateSchema, ProductVariantResponseSchema,
-)
-from src.repositories.catalog.product_variant_repository import ProductVariantRepository
-from src.services.catalog.product_variant_service import ProductVariantService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.product_variant_repository import ProductVariantRepository
+from src.schemas.catalog.product_variant_schema import (
+    ProductVariantCreateSchema,
+    ProductVariantResponseSchema,
+    ProductVariantUpdateSchema,
+)
+from src.services.catalog.product_variant_service import ProductVariantService
 
 
 def get_product_variant_service(session: AsyncSession = Depends(get_db)) -> ProductVariantService:

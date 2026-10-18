@@ -1,13 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.pricing_tier_schema import (
-    PricingTierCreateSchema, PricingTierUpdateSchema, PricingTierResponseSchema,
-)
-from src.repositories.catalog.pricing_tier_repository import PricingTierRepository
-from src.services.catalog.pricing_tier_service import PricingTierService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.pricing_tier_repository import PricingTierRepository
+from src.schemas.catalog.pricing_tier_schema import (
+    PricingTierCreateSchema,
+    PricingTierResponseSchema,
+    PricingTierUpdateSchema,
+)
+from src.services.catalog.pricing_tier_service import PricingTierService
 
 
 def get_tier_service(session: AsyncSession = Depends(get_db)) -> PricingTierService:

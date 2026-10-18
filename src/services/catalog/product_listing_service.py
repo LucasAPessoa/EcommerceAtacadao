@@ -1,14 +1,21 @@
-from uuid import UUID
 from typing import List, Optional
+from uuid import UUID
 
-from src.schemas.catalog.product_listing_schema import ProductListingCreateSchema, ProductListingUpdateSchema, ProductListingResponseSchema
 from src.repositories.catalog.product_listing_repository import ProductListingRepository
+from src.schemas.catalog.product_listing_schema import (
+    ProductListingCreateSchema,
+    ProductListingResponseSchema,
+    ProductListingUpdateSchema,
+)
+
 
 class ProductListingService:
     def __init__(self, repository: ProductListingRepository):
         self.repository = repository
 
-    async def create_listing(self, listing_in: ProductListingCreateSchema) -> ProductListingResponseSchema:
+    async def create_listing(
+        self, listing_in: ProductListingCreateSchema
+    ) -> ProductListingResponseSchema:
         """Regras de negócio para anúncios em marketplaces."""
         
         if not listing_in.title or not listing_in.title.strip():
@@ -26,7 +33,9 @@ class ProductListingService:
     async def get_listing_by_id(self, listing_id: UUID) -> Optional[ProductListingResponseSchema]:
         return await self.repository.get_by_id(listing_id)
 
-    async def update_listing(self, listing_id: UUID, listing_in: ProductListingUpdateSchema) -> Optional[ProductListingResponseSchema]:
+    async def update_listing(
+        self, listing_id: UUID, listing_in: ProductListingUpdateSchema
+    ) -> Optional[ProductListingResponseSchema]:
         data = listing_in.model_dump(exclude_unset=True)
         return await self.repository.update(listing_id, data)
 

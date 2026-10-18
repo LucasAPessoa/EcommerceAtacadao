@@ -1,13 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.product_image_schema import (
-    ProductImageCreateSchema, ProductImageUpdateSchema, ProductImageResponseSchema,
-)
-from src.repositories.catalog.product_image_repository import ProductImageRepository
-from src.services.catalog.product_image_service import ProductImageService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.product_image_repository import ProductImageRepository
+from src.schemas.catalog.product_image_schema import (
+    ProductImageCreateSchema,
+    ProductImageResponseSchema,
+    ProductImageUpdateSchema,
+)
+from src.services.catalog.product_image_service import ProductImageService
 
 
 def get_product_image_service(session: AsyncSession = Depends(get_db)) -> ProductImageService:

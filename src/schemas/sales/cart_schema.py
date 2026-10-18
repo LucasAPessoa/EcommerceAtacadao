@@ -26,7 +26,7 @@ class CartItemResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]  # padrão pydantic v2 (computed_field + property)
     @property
     def subtotal(self) -> Decimal:
         return self.unit_price * self.quantity
@@ -39,12 +39,12 @@ class CartResponseSchema(TimestampMixinSchema):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]  # padrão pydantic v2
     @property
     def total_items(self) -> int:
         return sum(item.quantity for item in self.items)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]  # padrão pydantic v2
     @property
     def total_amount(self) -> Decimal:
         return sum((item.subtotal for item in self.items), Decimal("0.00"))

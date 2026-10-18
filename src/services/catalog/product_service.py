@@ -1,8 +1,13 @@
-from uuid import UUID
 from typing import List, Optional
+from uuid import UUID
 
-from src.schemas.catalog.product_schema import ProductCreateSchema, ProductUpdateSchema, ProductResponseSchema
 from src.repositories.catalog.product_repository import ProductRepository
+from src.schemas.catalog.product_schema import (
+    ProductCreateSchema,
+    ProductResponseSchema,
+    ProductUpdateSchema,
+)
+
 
 class ProductService:
     def __init__(self, repository: ProductRepository):
@@ -15,7 +20,9 @@ class ProductService:
             raise ValueError("¡Pah! O nome do produto não pode ser vazio, che.")
             
         if not product_in.code or not product_in.code.strip():
-            raise ValueError("O código (SKU raiz) do produto é obrigatório para manter a sincronia com o Bling.")
+            raise ValueError(
+                "O código (SKU raiz) do produto é obrigatório para manter a sincronia com o Bling."
+            )
             
         if product_in.product_type and len(product_in.product_type) > 10:
             raise ValueError("O tipo do produto não pode exceder 10 caracteres.")
@@ -33,7 +40,9 @@ class ProductService:
     async def get_product_by_code(self, code: str) -> Optional[ProductResponseSchema]:
         return await self.repository.get_by_code(code)
 
-    async def update_product(self, product_id: UUID, product_in: ProductUpdateSchema) -> Optional[ProductResponseSchema]:
+    async def update_product(
+        self, product_id: UUID, product_in: ProductUpdateSchema
+    ) -> Optional[ProductResponseSchema]:
         # Regra: Não permitir a alteração do SKU raiz (code) via PATCH para não quebrar a sincronia
         if product_in.code is not None:
              raise ValueError("O código (SKU raiz) do produto é imutável após a criação, bo.")

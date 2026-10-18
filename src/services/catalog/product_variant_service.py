@@ -1,14 +1,21 @@
-from uuid import UUID
 from typing import List, Optional
+from uuid import UUID
 
-from src.schemas.catalog.product_variant_schema import ProductVariantCreateSchema, ProductVariantUpdateSchema, ProductVariantResponseSchema
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
+from src.schemas.catalog.product_variant_schema import (
+    ProductVariantCreateSchema,
+    ProductVariantResponseSchema,
+    ProductVariantUpdateSchema,
+)
+
 
 class ProductVariantService:
     def __init__(self, repository: ProductVariantRepository):
         self.repository = repository
 
-    async def create_variant(self, variant_in: ProductVariantCreateSchema) -> ProductVariantResponseSchema:
+    async def create_variant(
+        self, variant_in: ProductVariantCreateSchema
+    ) -> ProductVariantResponseSchema:
         """Regras de negócio para as variações (SKUs) do produto."""
         
         if not variant_in.bling_sku or not variant_in.bling_sku.strip():
@@ -29,7 +36,9 @@ class ProductVariantService:
     async def get_variant_by_id(self, variant_id: UUID) -> Optional[ProductVariantResponseSchema]:
         return await self.repository.get_by_id(variant_id)
 
-    async def update_variant(self, variant_id: UUID, variant_in: ProductVariantUpdateSchema) -> Optional[ProductVariantResponseSchema]:
+    async def update_variant(
+        self, variant_id: UUID, variant_in: ProductVariantUpdateSchema
+    ) -> Optional[ProductVariantResponseSchema]:
         if variant_in.base_price is not None and variant_in.base_price < 0:
             raise ValueError("O preço atualizado não pode ser negativo.")
             

@@ -18,6 +18,7 @@ from src.schemas.sales.checkout_schema import (
     CheckoutPreviewRequestSchema,
     CheckoutPreviewResponseSchema,
     CheckoutShippingOptionSchema,
+    MercadoPagoCheckoutSchema,
 )
 from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.operations.shipping_service import ShippingService
@@ -256,7 +257,7 @@ class CheckoutService:
     async def confirm(
         self,
         user_id: UUID,
-        checkout_in: CheckoutConfirmSchema | CheckoutPreviewRequestSchema,
+        checkout_in: CheckoutConfirmSchema | MercadoPagoCheckoutSchema,
         idempotency_key: UUID,
         *,
         payment_method: PaymentMethodEnum | None = None,
@@ -344,8 +345,8 @@ class CheckoutService:
             shipping_fee=shipping_fee,
             total_amount=total,
             subtotal_amount=subtotal,
-            payment_method=payment_method or checkout_in.payment_method,
-            installments=installments if installments is not None else checkout_in.installments,
+            payment_method=payment_method or checkout_in.payment_method,  # type: ignore[union-attr]  # só avaliado quando payment_method é None (fluxo confirm)
+            installments=installments if installments is not None else checkout_in.installments,  # type: ignore[union-attr]  # idem: fallback só no fluxo confirm
             checkout_idempotency_key=idempotency_key,
             shipping_provider=selected_quote.company_name or "Melhor Envio",
             shipping_service_id=selected_quote.service_id,

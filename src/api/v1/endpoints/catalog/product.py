@@ -1,12 +1,16 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
-from src.schemas.catalog.product_schema import ProductCreateSchema, ProductUpdateSchema, ProductResponseSchema
-from src.repositories.catalog.product_repository import ProductRepository
-from src.services.catalog.product_service import ProductService
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
+from src.core.db import get_db
+from src.repositories.catalog.product_repository import ProductRepository
+from src.schemas.catalog.product_schema import (
+    ProductCreateSchema,
+    ProductResponseSchema,
+    ProductUpdateSchema,
+)
 from src.schemas.response_schema import BaseResponse
+from src.services.catalog.product_service import ProductService
 
 
 def get_product_service(session: AsyncSession = Depends(get_db)) -> ProductService:

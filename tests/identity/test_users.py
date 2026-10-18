@@ -4,16 +4,15 @@ Tests for the users module: /users/me, /users/list, /users/admin-only
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from tests.conftest import (
-    API_V1_PREFIX,
     ADMIN_CREDENTIALS,
+    API_V1_PREFIX,
     USER_CREDENTIALS,
     auth_headers,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /users/me

@@ -62,7 +62,7 @@ def build_crud_router(
         token inválido ou role não-admin só veem registros aprovados (o
         por-id de não aprovado vira 404). Token inválido NÃO gera 401.
     """
-    router = APIRouter(prefix=prefix, tags=tags)
+    router = APIRouter(prefix=prefix, tags=tags)  # type: ignore[arg-type]  # list[str] aceito pelo FastAPI (tags: list[str | Enum])
 
     def _create_dependency():
         if create_roles:
@@ -76,11 +76,11 @@ def build_crud_router(
 
     @router.post(
         "/",
-        response_model=BaseResponse[response_schema],
+        response_model=BaseResponse[response_schema],  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         status_code=status.HTTP_201_CREATED,
     )
     async def create_item(
-        payload: create_schema,
+        payload: create_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         service=Depends(service_dependency),
         _user=_create_dependency(),
     ):
@@ -104,7 +104,7 @@ def build_crud_router(
         return {"include_unapproved": is_admin}
 
     if supports_pagination:
-        @router.get("/", response_model=BaseResponse[List[response_schema]])
+        @router.get("/", response_model=BaseResponse[List[response_schema]])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         async def list_items(
             skip: int = 0,
             limit: int = 100,
@@ -116,15 +116,15 @@ def build_crud_router(
             )
             return BaseResponse(status="success", data=data)
     else:
-        @router.get("/", response_model=BaseResponse[List[response_schema]])
-        async def list_items(
+        @router.get("/", response_model=BaseResponse[List[response_schema]])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
+        async def list_items(  # type: ignore[misc]  # mesma rota definida em ramos if/else exclusivos
             service=Depends(service_dependency),
             viewer=Depends(_viewer_dependency),
         ):
             data = await getattr(service, verbs["list"])(**_read_kwargs(viewer))
             return BaseResponse(status="success", data=data)
 
-    @router.get("/{item_id}", response_model=BaseResponse[response_schema])
+    @router.get("/{item_id}", response_model=BaseResponse[response_schema])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
     async def get_item(
         item_id: UUID,
         service=Depends(service_dependency),
@@ -135,10 +135,10 @@ def build_crud_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
         return BaseResponse(status="success", data=data)
 
-    @router.patch("/{item_id}", response_model=BaseResponse[response_schema])
+    @router.patch("/{item_id}", response_model=BaseResponse[response_schema])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
     async def update_item(
         item_id: UUID,
-        payload: update_schema,
+        payload: update_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         service=Depends(service_dependency),
         _user=_write_dependency(),
     ):

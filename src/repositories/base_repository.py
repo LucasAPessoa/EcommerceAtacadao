@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
-from pydantic import BaseModel
 
+from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,14 +14,19 @@ ModelType = TypeVar("ModelType", bound=Base)
 ResponseSchemaType = TypeVar("ResponseSchemaType", bound=BaseModel)
 
 class BaseRepository(Generic[ModelType, ResponseSchemaType]):
-    def __init__(self, model: Type[ModelType], response_schema: Type[ResponseSchemaType], session: AsyncSession):
+    def __init__(
+        self,
+        model: Type[ModelType],
+        response_schema: Type[ResponseSchemaType],
+        session: AsyncSession,
+    ):
         self.model = model
         self.response_schema = response_schema
         self.session = session
 
     async def get_by_id(self, id: uuid.UUID) -> Optional[ResponseSchemaType]:
         """Busca um registo pelo ID e retorna o Schema pronto, ignorando soft delete."""
-        query = select(self.model).where(self.model.id == id)
+        query = select(self.model).where(self.model.id == id)  # type: ignore[attr-defined]  # ModelType genérico: todos os models concretos têm id
         
         if issubclass(self.model, SoftDeleteMixin):
             query = query.where(self.model.deleted_at.is_(None))
@@ -52,7 +57,8 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
         """Cria, guarda no banco (commit) e retorna o Schema preenchido."""
         db_obj = self.model(**obj_in)
         self.session.add(db_obj)
-        await self.session.commit()  # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        await self.session.commit()
         await self.session.refresh(db_obj)
 
         return self.response_schema.model_validate(db_obj)
@@ -60,7 +66,7 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
     async def update(self, id: uuid.UUID, obj_in: Dict[str, Any]) -> Optional[ResponseSchemaType]:
         """Busca o registro pelo ID, atualiza os campos e retorna o Schema atualizado."""
         # Precisamos buscar a instância do banco primeiro para fazer o tracking da alteração
-        query = select(self.model).where(self.model.id == id)
+        query = select(self.model).where(self.model.id == id)  # type: ignore[attr-defined]  # ModelType genérico: todos os models concretos têm id
         if issubclass(self.model, SoftDeleteMixin):
             query = query.where(self.model.deleted_at.is_(None))
             
@@ -75,7 +81,8 @@ class BaseRepository(Generic[ModelType, ResponseSchemaType]):
                 setattr(db_obj, field, value)
         
         self.session.add(db_obj)
-        await self.session.commit()  # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        # commit real: flush() sozinho não persiste, é revertido no close() da sessão
+        await self.session.commit()
         await self.session.refresh(db_obj)
 
         return self.response_schema.model_validate(db_obj)

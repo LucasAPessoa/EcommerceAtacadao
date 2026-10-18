@@ -28,12 +28,13 @@ if os.environ.get("TEST_ALLOW_REAL_REDIS") != "1":
         os.environ.pop(_name, None)
 
 import asyncio
+import random
+import time
 from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
 import pytest
 import pytest_asyncio
-
 
 BASE_URL = "http://127.0.0.1:8000"
 API_V1_PREFIX = "/api/v1"
@@ -153,10 +154,6 @@ def auth_headers(token: str) -> Dict[str, str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Unique email generator
 # ─────────────────────────────────────────────────────────────────────────────
-
-import time
-import random
-
 
 def unique_email(prefix: str = "test") -> str:
     """Generate a unique email to avoid collisions between test runs."""

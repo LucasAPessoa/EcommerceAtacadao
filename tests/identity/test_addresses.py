@@ -4,16 +4,13 @@ Tests for the addresses module: /addresses/* (CRUD + default)
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from tests.conftest import (
     API_V1_PREFIX,
     auth_headers,
-    unique_email,
-    make_user_payload,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers

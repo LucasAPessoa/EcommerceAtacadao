@@ -1,7 +1,12 @@
 from uuid import UUID
-from src.models.catalog import Category
-from src.schemas.catalog.category_schema import CategoryCreateSchema, CategoryBaseSchema, CategoryResponseSchema
+
 from src.repositories.catalog.category_repository import CategoryRepository
+from src.schemas.catalog.category_schema import (
+    CategoryBaseSchema,
+    CategoryCreateSchema,
+    CategoryResponseSchema,
+)
+
 
 class CategoryService: 
     def __init__(self, repository: CategoryRepository):
@@ -36,7 +41,9 @@ class CategoryService:
             return None
         return CategoryResponseSchema.model_validate(category)
     
-    async def update_category(self, category_id: UUID, category_in: CategoryBaseSchema) -> CategoryResponseSchema | None:
+    async def update_category(
+        self, category_id: UUID, category_in: CategoryBaseSchema
+    ) -> CategoryResponseSchema | None:
         data = category_in.model_dump(exclude_unset=True)
         # Bug original: passava o objeto (CategoryResponseSchema) no lugar do id
         # para repository.update(id, data) — a comparação model.id == <schema> no

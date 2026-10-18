@@ -1,7 +1,10 @@
-from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.schemas.base_schema import SoftDeleteMixinSchema
+
 
 class CategoryBaseSchema(BaseModel):
     bling_id: Optional[int] = None

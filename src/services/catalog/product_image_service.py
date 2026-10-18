@@ -1,8 +1,13 @@
-from uuid import UUID
 from typing import List, Optional
+from uuid import UUID
 
-from src.schemas.catalog.product_image_schema import ProductImageCreateSchema, ProductImageUpdateSchema, ProductImageResponseSchema
 from src.repositories.catalog.product_image_repository import ProductImageRepository
+from src.schemas.catalog.product_image_schema import (
+    ProductImageCreateSchema,
+    ProductImageResponseSchema,
+    ProductImageUpdateSchema,
+)
+
 
 class ProductImageService:
     def __init__(self, repository: ProductImageRepository):
@@ -14,7 +19,8 @@ class ProductImageService:
         if not image_in.image_url.startswith(("http://", "https://")):
             raise ValueError("A URL da imagem deve ser um link válido (http ou https), che.")
             
-        # Opcional: Se 'is_main' for True, tu poderias desmarcar as outras imagens da mesma variante no banco
+        # Opcional: Se 'is_main' for True, tu poderias desmarcar as outras imagens
+        # da mesma variante no banco
         
         data = image_in.model_dump(exclude_unset=True)
         return await self.repository.create(data)
@@ -25,7 +31,9 @@ class ProductImageService:
     async def get_image_by_id(self, image_id: UUID) -> Optional[ProductImageResponseSchema]:
         return await self.repository.get_by_id(image_id)
 
-    async def update_image(self, image_id: UUID, image_in: ProductImageUpdateSchema) -> Optional[ProductImageResponseSchema]:
+    async def update_image(
+        self, image_id: UUID, image_in: ProductImageUpdateSchema
+    ) -> Optional[ProductImageResponseSchema]:
         if image_in.image_url and not image_in.image_url.startswith(("http://", "https://")):
             raise ValueError("A nova URL da imagem deve ser válida.")
             
