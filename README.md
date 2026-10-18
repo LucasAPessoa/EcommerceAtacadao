@@ -183,3 +183,15 @@ Ruff completo, mypy e `pip-audit` rodam como `Report - ...` (não bloqueantes at
 Localmente: `uv sync --frozen && uv run ruff check --select E9,F63,F7,F82 src tests`
 e `uv run pytest -q $(find tests -name '*_unit.py')` (requer as variáveis obrigatórias do `.env.example`).
 Migrations de produção: apenas via `migrate-production.yml` (manual, environment `production`).
+
+### Migration gate
+
+Ordem obrigatória: PR só de migrations -> merge -> rodar `Migrate production` -> PR do código.
+O workflow registra a revisão aplicada como Deployment `database-production`; o check
+`Migration gate` (PRs) falha se o PR misturar migrations com código (`src/`, deps, workflows),
+ou se o head do Alembic do branch diferir da última revisão registrada. Não acessa o banco.
+PR só com `docs/`, `reports/`, `README.md`, `AGENTS.md` ou `CHANGELOG.md` passa sem comparar
+revisão. Workflows/CI, `tests/` isolados e qualquer outro arquivo contam como código.
+Bootstrap (uma vez, após o merge desta mudança): rode `Migrate production` na `main`
+(upgrade sem pendências é no-op) para criar o primeiro registro; só então marque
+`Migration gate` como check obrigatório da `main`.

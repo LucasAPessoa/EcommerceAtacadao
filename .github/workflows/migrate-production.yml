@@ -20,6 +20,8 @@ jobs:
     environment: production
     # workflow_dispatch permite escolher a branch; produção só migra a partir da main.
     if: github.ref == 'refs/heads/main'
+    outputs:
+      revision: ${{ steps.rev.outputs.revision }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -35,3 +37,41 @@ jobs:
           MELHOR_ENVIO_TOKEN: migration-placeholder
           MELHOR_ENVIO_USER_AGENT: migration-placeholder
           STORE_ORIGIN_ZIP_CODE: "00000000"
+      # Head aplicado = head do commit em execução (offline, sem DATABASE_URL).
+      - name: Lê revisão aplicada
+        id: rev
+        run: |
+          rev=$(uv run alembic heads | awk 'NR==1{print $1}')
+          test "$(uv run alembic heads | wc -l)" = 1
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+        env:
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+          SECRET_KEY: migration-placeholder
+          REFRESH_SECRET_KEY: migration-placeholder
+          MELHOR_ENVIO_TOKEN: migration-placeholder
+          MELHOR_ENVIO_USER_AGENT: migration-placeholder
+          STORE_ORIGIN_ZIP_CODE: "00000000"
+
+  record:
+    # Registra a revisão como GitHub Deployment (environment distinto dos da Vercel).
+    # Sem secrets de banco; apenas GITHUB_TOKEN com deployments: write.
+    name: Registra revisão em produção
+    needs: migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Cria deployment database-production
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ needs.migrate.outputs.revision }}
+        run: |
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg rev "$REVISION" \
+            '{ref:$ref, environment:"database-production", auto_merge:false, required_contexts:[],
+              production_environment:false, transient_environment:false,
+              description:"Alembic revision \($rev)", payload:{revision:$rev}}' \
+            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=success -f description="Alembic revision $REVISION"
