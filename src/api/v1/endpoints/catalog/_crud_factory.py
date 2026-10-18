@@ -18,6 +18,7 @@ Cada router de entidade agora é só uma chamada a build_crud_router() passando
 os nomes dos métodos do service (o "verbs"), porque os services não têm uma
 nomenclatura 100% padronizada (create_tier, create_attribute, create_image...).
 """
+
 from typing import Callable, List, Optional, Type
 from uuid import UUID
 
@@ -104,6 +105,7 @@ def build_crud_router(
         return {"include_unapproved": is_admin}
 
     if supports_pagination:
+
         @router.get("/", response_model=BaseResponse[List[response_schema]])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         async def list_items(
             skip: int = 0,
@@ -116,6 +118,7 @@ def build_crud_router(
             )
             return BaseResponse(status="success", data=data)
     else:
+
         @router.get("/", response_model=BaseResponse[List[response_schema]])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
         async def list_items(  # type: ignore[misc]  # mesma rota definida em ramos if/else exclusivos
             service=Depends(service_dependency),

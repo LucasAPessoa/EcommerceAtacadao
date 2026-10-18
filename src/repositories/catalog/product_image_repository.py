@@ -8,7 +8,5 @@ from src.schemas.catalog.product_image_schema import ProductImageResponseSchema
 class ProductImageRepository(BaseRepository[ProductImage, ProductImageResponseSchema]):
     def __init__(self, session: AsyncSession):
         super().__init__(
-            model=ProductImage, 
-            response_schema=ProductImageResponseSchema, 
-            session=session
+            model=ProductImage, response_schema=ProductImageResponseSchema, session=session
         )

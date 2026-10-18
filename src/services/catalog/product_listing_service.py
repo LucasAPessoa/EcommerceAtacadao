@@ -17,11 +17,11 @@ class ProductListingService:
         self, listing_in: ProductListingCreateSchema
     ) -> ProductListingResponseSchema:
         """Regras de negócio para anúncios em marketplaces."""
-        
+
         if not listing_in.title or not listing_in.title.strip():
             raise ValueError("O título do anúncio não pode ser vazio.")
-            
-        if listing_in.status not in [0, 1, 2]: # Exemplo: 0 = Pausado, 1 = Ativo, 2 = Excluído
+
+        if listing_in.status not in [0, 1, 2]:  # Exemplo: 0 = Pausado, 1 = Ativo, 2 = Excluído
             raise ValueError("Status do anúncio inválido para a plataforma.")
 
         data = listing_in.model_dump(exclude_unset=True)

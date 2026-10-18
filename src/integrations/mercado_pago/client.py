@@ -40,9 +40,7 @@ class MercadoPagoClient:
         notification_url_is_public = self._is_public_https_url(
             settings.MERCADO_PAGO_NOTIFICATION_URL
         )
-        frontend_url_is_public = self._is_public_https_url(
-            settings.MERCADO_PAGO_FRONTEND_BASE_URL
-        )
+        frontend_url_is_public = self._is_public_https_url(settings.MERCADO_PAGO_FRONTEND_BASE_URL)
         if not all(
             (
                 access_token_configured,

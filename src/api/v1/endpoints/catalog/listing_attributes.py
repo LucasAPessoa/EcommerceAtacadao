@@ -13,7 +13,7 @@ from src.services.catalog.listing_attribute_service import ListingAttributeServi
 
 
 def get_listing_attribute_service(
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
 ) -> ListingAttributeService:
     repository = ListingAttributeRepository(session)
     return ListingAttributeService(repository)

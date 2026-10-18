@@ -12,9 +12,7 @@ from src.schemas.catalog.product_review_schema import ProductReviewResponseSchem
 class ProductReviewRepository(BaseRepository[ProductReview, ProductReviewResponseSchema]):
     def __init__(self, session: AsyncSession):
         super().__init__(
-            model=ProductReview, 
-            response_schema=ProductReviewResponseSchema, 
-            session=session
+            model=ProductReview, response_schema=ProductReviewResponseSchema, session=session
         )
 
     async def get_all(

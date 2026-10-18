@@ -76,6 +76,7 @@ async def login(
     token_pair = await auth_service.create_token_pair(user)
     return BaseResponse[Token](message="Login successful", data=token_pair)
 
+
 @router.post("/refresh", response_model=BaseResponse[Token])
 async def refresh_tokens(
     payload: RefreshTokenRequest,

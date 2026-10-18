@@ -13,6 +13,7 @@ from tests.conftest import API_V1_PREFIX
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _get_first_variant_id(client: httpx.AsyncClient) -> str:
     resp = await client.get(f"{API_V1_PREFIX}/catalog/products/")
     assert resp.status_code == 200
@@ -34,13 +35,12 @@ def make_shipping_payload(variant_id: str, dest_zip: str = "20040020") -> dict:
 # POST /operations/shipping/calculate
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestShippingCalculate:
     """POST /operations/shipping/calculate"""
 
     @pytest.mark.asyncio
-    async def test_calculate_shipping_public_endpoint(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_calculate_shipping_public_endpoint(self, client: httpx.AsyncClient):
         """Shipping is public (no auth required)."""
         variant_id = await _get_first_variant_id(client)
         resp = await client.post(
@@ -58,9 +58,7 @@ class TestShippingCalculate:
                     assert "carrier" in quote or "name" in quote or "price" in quote
 
     @pytest.mark.asyncio
-    async def test_calculate_shipping_unauthenticated(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_calculate_shipping_unauthenticated(self, client: httpx.AsyncClient):
         """Even unauthenticated, the endpoint should be reachable (200/502)."""
         variant_id = await _get_first_variant_id(client)
         resp = await client.post(
@@ -72,9 +70,7 @@ class TestShippingCalculate:
         assert resp.status_code != 401
 
     @pytest.mark.asyncio
-    async def test_calculate_shipping_empty_items_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_calculate_shipping_empty_items_returns_422(self, client: httpx.AsyncClient):
         resp = await client.post(
             f"{API_V1_PREFIX}/operations/shipping/calculate",
             json={
@@ -115,9 +111,7 @@ class TestShippingCalculate:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_calculate_shipping_with_invalid_zip_destination(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_calculate_shipping_with_invalid_zip_destination(self, client: httpx.AsyncClient):
         variant_id = await _get_first_variant_id(client)
         resp = await client.post(
             f"{API_V1_PREFIX}/operations/shipping/calculate",

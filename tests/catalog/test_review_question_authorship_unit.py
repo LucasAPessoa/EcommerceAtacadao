@@ -1,4 +1,5 @@
 """Testes unitários (sem banco): autoria e moderação de reviews/perguntas."""
+
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -34,8 +35,8 @@ def _client(current_user, review_service, question_service):
     app.include_router(product_reviews.router)
     app.include_router(product_questions.router)
     app.dependency_overrides[product_reviews.get_product_review_service] = lambda: review_service
-    app.dependency_overrides[product_questions.get_product_question_service] = (
-        lambda: question_service
+    app.dependency_overrides[product_questions.get_product_question_service] = lambda: (
+        question_service
     )
     app.dependency_overrides[get_db] = lambda: None
     app.dependency_overrides[get_optional_current_user] = lambda: current_user
@@ -81,11 +82,19 @@ async def test_question_service_forces_author_and_no_answer():
 def test_http_user_forging_fields_gets_422_and_service_not_called():
     rs, qs = AsyncMock(), AsyncMock()
     client = _client(USER, rs, qs)
-    r = client.post("/product-reviews/", json={
-        "product_id": str(PRODUCT_ID), "rating": 5,
-        "user_id": str(uuid.uuid4()), "is_approved": True})
-    q = client.post("/product-questions/", json={
-        "product_id": str(PRODUCT_ID), "question_text": "x?", "answer_text": "fake"})
+    r = client.post(
+        "/product-reviews/",
+        json={
+            "product_id": str(PRODUCT_ID),
+            "rating": 5,
+            "user_id": str(uuid.uuid4()),
+            "is_approved": True,
+        },
+    )
+    q = client.post(
+        "/product-questions/",
+        json={"product_id": str(PRODUCT_ID), "question_text": "x?", "answer_text": "fake"},
+    )
     assert r.status_code == 422 and q.status_code == 422
     rs.create_review.assert_not_called()
     qs.create_question.assert_not_called()
@@ -123,11 +132,24 @@ def test_http_admin_can_approve_and_answer():
     now = "2026-01-01T00:00:00"
     rid, qid = uuid.uuid4(), uuid.uuid4()
     rs.update_review.return_value = {
-        "id": rid, "product_id": PRODUCT_ID, "user_id": USER.id, "rating": 5,
-        "comment": None, "is_approved": True, "created_at": now, "updated_at": now}
+        "id": rid,
+        "product_id": PRODUCT_ID,
+        "user_id": USER.id,
+        "rating": 5,
+        "comment": None,
+        "is_approved": True,
+        "created_at": now,
+        "updated_at": now,
+    }
     qs.update_question.return_value = {
-        "id": qid, "product_id": PRODUCT_ID, "user_id": USER.id, "question_text": "x?",
-        "answer_text": "sim", "created_at": now, "updated_at": now}
+        "id": qid,
+        "product_id": PRODUCT_ID,
+        "user_id": USER.id,
+        "question_text": "x?",
+        "answer_text": "sim",
+        "created_at": now,
+        "updated_at": now,
+    }
     client = _client(ADMIN, rs, qs)
     assert client.patch(f"/product-reviews/{rid}", json={"is_approved": True}).status_code == 200
     assert client.patch(f"/product-questions/{qid}", json={"answer_text": "sim"}).status_code == 200
@@ -138,8 +160,15 @@ class _FakeReviewRepo:
 
     def __init__(self):
         self.rows = [
-            {"id": uuid.uuid4(), "product_id": PRODUCT_ID, "user_id": USER.id, "rating": 5,
-             "comment": None, "is_approved": approved, **TS}
+            {
+                "id": uuid.uuid4(),
+                "product_id": PRODUCT_ID,
+                "user_id": USER.id,
+                "rating": 5,
+                "comment": None,
+                "is_approved": approved,
+                **TS,
+            }
             for approved in (True, False)
         ]
 

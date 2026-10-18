@@ -1,4 +1,5 @@
 """Estorno, chargeback e reembolso administrativo (sem banco)."""
+
 import logging
 from datetime import datetime
 from types import SimpleNamespace
@@ -46,8 +47,11 @@ class FakeRepo(OrderRepository):
             return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
 
         self.session = SimpleNamespace(
-            execute=execute, flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock(),
-            add=lambda obj: None
+            execute=execute,
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+            add=lambda obj: None,
         )
 
     async def get_transaction_for_mercado_pago_order(self, _order_id):
@@ -68,8 +72,13 @@ class FakeRepo(OrderRepository):
         self, order_id, transaction_id, now, *, reason=None, error_code=""
     ):
         self.reconciliation = SimpleNamespace(
-            order_id=order_id, status=ReconciliationStatusEnum.PENDING, reason=reason,
-            outcome=None, next_retry_at=now, resolved_at=None, last_error_code=error_code,
+            order_id=order_id,
+            status=ReconciliationStatusEnum.PENDING,
+            reason=reason,
+            outcome=None,
+            next_retry_at=now,
+            resolved_at=None,
+            last_error_code=error_code,
         )
         return self.reconciliation
 
@@ -84,19 +93,33 @@ class FakeRepo(OrderRepository):
         self.statuses.append(new_status)
 
 
-def _setup(order_status=O.PAID, tx_status=T.APPROVED, detail="accredited", reconciliation=None,
-           confirmed=True):
+def _setup(
+    order_status=O.PAID,
+    tx_status=T.APPROVED,
+    detail="accredited",
+    reconciliation=None,
+    confirmed=True,
+):
     variant = SimpleNamespace(id=uuid4(), stock_quantity=7)
     order = SimpleNamespace(id=uuid4(), status=order_status, currency="BRL", transactions=[])
     tx = SimpleNamespace(
-        id=uuid4(), gateway_ref_id="ORD-1", amount="42.50", status=tx_status,
-        gateway_status_detail=detail, gateway_payment_id=None, webhook_processed_at=None,
+        id=uuid4(),
+        gateway_ref_id="ORD-1",
+        amount="42.50",
+        status=tx_status,
+        gateway_status_detail=detail,
+        gateway_payment_id=None,
+        webhook_processed_at=None,
         paid_at=None,
     )
     order.transactions.append(tx)
     reservation = SimpleNamespace(
-        id=uuid4(), variant_id=variant.id, quantity=3, released_at=None,
-        status=StockReservationStatusEnum.CONFIRMED if confirmed
+        id=uuid4(),
+        variant_id=variant.id,
+        quantity=3,
+        released_at=None,
+        status=StockReservationStatusEnum.CONFIRMED
+        if confirmed
         else StockReservationStatusEnum.ACTIVE,
     )
     repo = FakeRepo(order, tx, reconciliation, [reservation], [variant])
@@ -104,10 +127,16 @@ def _setup(order_status=O.PAID, tx_status=T.APPROVED, detail="accredited", recon
 
 
 def _provider(order, status, detail):
-    return AsyncMock(return_value={
-        "id": "ORD-1", "external_reference": str(order.id), "total_amount": "42.50",
-        "currency": "BRL", "status": status, "status_detail": detail,
-    })
+    return AsyncMock(
+        return_value={
+            "id": "ORD-1",
+            "external_reference": str(order.id),
+            "total_amount": "42.50",
+            "currency": "BRL",
+            "status": status,
+            "status_detail": detail,
+        }
+    )
 
 
 async def _webhook(repo, order, status, detail):
@@ -153,8 +182,10 @@ async def test_full_refund_on_dispatched_order_only_opens_manual_review(shipped)
     resolved = SimpleNamespace(
         status=ReconciliationStatusEnum.RESOLVED,
         reason=ReconciliationReasonEnum.STOCK_COMMIT_FAILED,
-        outcome=ReconciliationOutcomeEnum.FULFILLMENT_CONFIRMED, resolved_at=FUTURE,
-        next_retry_at=None, last_error_code=None,
+        outcome=ReconciliationOutcomeEnum.FULFILLMENT_CONFIRMED,
+        resolved_at=FUTURE,
+        next_retry_at=None,
+        last_error_code=None,
     )
     repo, order, tx, variant, _ = _setup(shipped, reconciliation=resolved)
     await _webhook(repo, order, "refunded", "refunded")
@@ -218,8 +249,9 @@ async def test_unknown_status_logs_and_changes_nothing(caplog) -> None:
     assert tx.status == T.APPROVED and order.status == O.PAID and repo.reconciliation is None
 
 
-@pytest.mark.parametrize("status", [T.REFUNDED, T.PARTIALLY_REFUNDED, T.CHARGEBACK, T.PENDING,
-                                    T.PROCESSING])
+@pytest.mark.parametrize(
+    "status", [T.REFUNDED, T.PARTIALLY_REFUNDED, T.CHARGEBACK, T.PENDING, T.PROCESSING]
+)
 def test_dispatch_requires_approved_payment(status) -> None:
     order = SimpleNamespace(transactions=[SimpleNamespace(status=status)])
     with pytest.raises(ValueError):
@@ -299,8 +331,10 @@ async def test_refund_of_canceled_order_with_late_payment_adds_no_stock() -> Non
     reconciliation = SimpleNamespace(
         status=ReconciliationStatusEnum.IN_REVIEW,
         reason=ReconciliationReasonEnum.CANCELED_ORDER_APPROVED,
-        outcome=ReconciliationOutcomeEnum.MANUAL_REVIEW, resolved_at=None,
-        next_retry_at=None, last_error_code="canceled_order_approved",
+        outcome=ReconciliationOutcomeEnum.MANUAL_REVIEW,
+        resolved_at=None,
+        next_retry_at=None,
+        last_error_code="canceled_order_approved",
     )
     repo, order, tx, variant, _ = _setup(O.CANCELED, reconciliation=reconciliation, confirmed=False)
     await _webhook(repo, order, "refunded", "refunded")
@@ -312,8 +346,10 @@ async def test_refund_of_canceled_order_with_late_payment_adds_no_stock() -> Non
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("final", "detail", "status", "sdetail"),
-    [(T.REFUNDED, "refunded", "refunded", "refunded"),
-     (T.CHARGEBACK, "in_process", "charged_back", "in_process")],
+    [
+        (T.REFUNDED, "refunded", "refunded", "refunded"),
+        (T.CHARGEBACK, "in_process", "charged_back", "in_process"),
+    ],
 )
 async def test_late_accredited_after_refund_or_chargeback_has_no_effect(
     final, detail, status, sdetail
@@ -349,8 +385,10 @@ def test_request_refund_derives_reason_and_reopens_resolved_reconciliation() -> 
     resolved = SimpleNamespace(
         status=ReconciliationStatusEnum.RESOLVED,
         reason=ReconciliationReasonEnum.CANCELED_ORDER_APPROVED,
-        outcome=ReconciliationOutcomeEnum.MANUAL_REVIEW, resolved_at=FUTURE,
-        next_retry_at=None, last_error_code=None,
+        outcome=ReconciliationOutcomeEnum.MANUAL_REVIEW,
+        resolved_at=FUTURE,
+        next_retry_at=None,
+        last_error_code=None,
     )
     repo, order, *_ = _setup(O.PAYMENT_RECONCILIATION, reconciliation=resolved)
     added = []

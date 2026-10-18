@@ -306,9 +306,7 @@ class RedisTcpRateLimiter(BaseRedisRateLimiter):
             result = await self.executor(["EVAL", self._COUNTER_SCRIPT, 1, key, window_seconds])
         else:
             result = await asyncio.wait_for(
-                self._get_client().eval(
-                    self._COUNTER_SCRIPT, 1, key, window_seconds
-                ),
+                self._get_client().eval(self._COUNTER_SCRIPT, 1, key, window_seconds),
                 timeout=self.timeout_seconds,
             )
         if not isinstance(result, (list, tuple)) or len(result) != 2:

@@ -36,8 +36,11 @@ async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
     monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
     monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
     order = SimpleNamespace(
-        id=uuid4(), order_code="PED-TEST-0001",
-        status=OrderStatusEnum.PENDING_PAYMENT, currency="BRL", total_amount="42.50",
+        id=uuid4(),
+        order_code="PED-TEST-0001",
+        status=OrderStatusEnum.PENDING_PAYMENT,
+        currency="BRL",
+        total_amount="42.50",
     )
     transaction = SimpleNamespace(
         gateway_provider="LOCAL", checkout_url=None, status=TransactionStatusEnum.PENDING
@@ -101,8 +104,11 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
     monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
     monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
     order = SimpleNamespace(
-        id=uuid4(), order_code="PED-1", status=OrderStatusEnum.PENDING_PAYMENT,
-        currency="BRL", total_amount="10.00",
+        id=uuid4(),
+        order_code="PED-1",
+        status=OrderStatusEnum.PENDING_PAYMENT,
+        currency="BRL",
+        total_amount="10.00",
     )
     transaction = SimpleNamespace(
         gateway_provider="MERCADO_PAGO_PREPARING",
@@ -125,7 +131,7 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
                 "total_amount": "10.00",
                 "currency": "BRL",
             }
-        )
+        ),
     )
     service = MercadoPagoCheckoutService(
         SimpleNamespace(confirm=AsyncMock(return_value=order)), repository, client
@@ -351,8 +357,12 @@ async def test_refunded_webhook_is_applied_after_prior_approval() -> None:
     client = SimpleNamespace(
         get_order=AsyncMock(
             return_value={
-                "id": "ORD-1", "external_reference": str(order_id), "total_amount": "42.50",
-                "currency": "BRL", "status": "refunded", "status_detail": "refunded",
+                "id": "ORD-1",
+                "external_reference": str(order_id),
+                "total_amount": "42.50",
+                "currency": "BRL",
+                "status": "refunded",
+                "status_detail": "refunded",
             }
         )
     )
@@ -364,8 +374,9 @@ async def test_refunded_webhook_is_applied_after_prior_approval() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delayed_approval_for_canceled_order_creates_reconciliation_without_stock_commit(
-) -> None:
+async def test_delayed_approval_for_canceled_order_creates_reconciliation_without_stock_commit() -> (  # noqa: E501 (nome do teste longo; o formatter não quebra)
+    None
+):
     order_id, transaction_id = uuid4(), uuid4()
     transaction = SimpleNamespace(
         id=transaction_id,
@@ -390,8 +401,12 @@ async def test_delayed_approval_for_canceled_order_creates_reconciliation_withou
     client = SimpleNamespace(
         get_order=AsyncMock(
             return_value={
-                "id": "ORD-1", "external_reference": str(order_id), "total_amount": "42.50",
-                "currency": "BRL", "status": "processed", "status_detail": "accredited",
+                "id": "ORD-1",
+                "external_reference": str(order_id),
+                "total_amount": "42.50",
+                "currency": "BRL",
+                "status": "processed",
+                "status_detail": "accredited",
             }
         )
     )
@@ -408,8 +423,9 @@ async def test_delayed_approval_for_canceled_order_creates_reconciliation_withou
 
 
 @pytest.mark.asyncio
-async def test_replayed_approval_for_canceled_order_never_reopens_or_confirms_reservations(
-) -> None:
+async def test_replayed_approval_for_canceled_order_never_reopens_or_confirms_reservations() -> (
+    None
+):
     order_id, transaction_id = uuid4(), uuid4()
     reconciliation = SimpleNamespace(
         status=ReconciliationStatusEnum.PENDING,
@@ -437,8 +453,12 @@ async def test_replayed_approval_for_canceled_order_never_reopens_or_confirms_re
     client = SimpleNamespace(
         get_order=AsyncMock(
             return_value={
-                "id": "ORD-1", "external_reference": str(order_id), "total_amount": "42.50",
-                "currency": "BRL", "status": "processed", "status_detail": "accredited",
+                "id": "ORD-1",
+                "external_reference": str(order_id),
+                "total_amount": "42.50",
+                "currency": "BRL",
+                "status": "processed",
+                "status_detail": "accredited",
             }
         )
     )
@@ -492,8 +512,12 @@ async def test_refunded_webhook_completes_existing_refund_audit() -> None:
     client = SimpleNamespace(
         get_order=AsyncMock(
             return_value={
-                "id": "ORD-1", "external_reference": str(order_id), "total_amount": "42.50",
-                "currency": "BRL", "status": "refunded", "status_detail": "refunded",
+                "id": "ORD-1",
+                "external_reference": str(order_id),
+                "total_amount": "42.50",
+                "currency": "BRL",
+                "status": "refunded",
+                "status_detail": "refunded",
             }
         )
     )
@@ -537,7 +561,7 @@ async def test_requested_refund_without_provider_id_retries_with_same_key() -> N
         get_order=AsyncMock(return_value={"transactions": {"refunds": []}}),
         create_order_refund=AsyncMock(
             return_value={"transactions": {"refunds": [{"id": "REF-1"}]}}
-        )
+        ),
     )
 
     await MercadoPagoCheckoutService(None, repository, client).request_full_refund(order_id)
@@ -611,8 +635,12 @@ async def test_approved_payment_with_stock_failure_creates_durable_reconciliatio
     client = SimpleNamespace(
         get_order=AsyncMock(
             return_value={
-                "id": "ORD-1", "external_reference": str(order_id), "total_amount": "42.50",
-                "currency": "BRL", "status": "processed", "status_detail": "accredited",
+                "id": "ORD-1",
+                "external_reference": str(order_id),
+                "total_amount": "42.50",
+                "currency": "BRL",
+                "status": "processed",
+                "status_detail": "accredited",
             }
         )
     )

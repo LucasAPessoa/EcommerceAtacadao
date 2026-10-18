@@ -18,16 +18,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Verify a plain password against its hash.
     """
     try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception:
         return False
+
 
 def get_password_hash(password: str) -> str:
     """
     Generate a bcrypt hash of the password.
     """
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -39,8 +41,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     import uuid
+
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -53,6 +57,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.REFRESH_SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+
 def verify_token(token: str, secret_key: str) -> dict:
     try:
         payload = jwt.decode(token, secret_key, algorithms=[settings.ALGORITHM])
@@ -60,11 +65,13 @@ def verify_token(token: str, secret_key: str) -> dict:
     except jwt.PyJWTError:
         return {}
 
+
 security = HTTPBearer()
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
 ) -> User:
     """
     Get the current authenticated user from the JWT token.
@@ -98,7 +105,7 @@ async def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_repo = UserRepository(session)
     user = await user_repo.get_by_email(email)
     if user is None:
@@ -108,6 +115,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
 
 async def get_current_active_user(
     current_user: User = Depends(get_current_user),
@@ -119,7 +127,9 @@ async def get_current_active_user(
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+
 _optional_security = HTTPBearer(auto_error=False)
+
 
 async def get_optional_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_security),
@@ -137,26 +147,26 @@ async def get_optional_current_user(
         return None
     return user if user.is_active else None
 
+
 def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
     return UserRepository(session)
+
 
 def require_role(required_roles: List[str]):
     """
     Dependency to check if the current user has one of the required roles.
     Returns a dependency function that can be used with Depends().
     """
-    async def role_dependency(
-        current_user: User = Depends(get_current_active_user)
-    ) -> User:
+
+    async def role_dependency(current_user: User = Depends(get_current_active_user)) -> User:
         if not current_user.role:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User has no role assigned"
+                status_code=status.HTTP_403_FORBIDDEN, detail="User has no role assigned"
             )
         if current_user.role.name not in required_roles:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Operation not permitted"
+                status_code=status.HTTP_403_FORBIDDEN, detail="Operation not permitted"
             )
         return current_user
+
     return role_dependency

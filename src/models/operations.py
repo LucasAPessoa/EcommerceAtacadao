@@ -102,9 +102,7 @@ class PaymentReconciliation(Base, TimestampMixin):
     """Estado durável para fundos capturados sem confirmação de fulfillment."""
 
     __tablename__ = "payment_reconciliations"
-    __table_args__ = (
-        UniqueConstraint("order_id", name="uq_payment_reconciliations_order"),
-    )
+    __table_args__ = (UniqueConstraint("order_id", name="uq_payment_reconciliations_order"),)
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
     order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orders.id"))

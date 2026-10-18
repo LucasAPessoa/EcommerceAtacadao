@@ -149,9 +149,7 @@ def _cancel_setup(ref: str | None):
         get_transaction_for_order=AsyncMock(return_value=transaction),
         get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
         count_live_active_reservations=AsyncMock(return_value=1),
-        release_active_reservations=AsyncMock(
-            side_effect=lambda *a, **k: events.append("release")
-        ),
+        release_active_reservations=AsyncMock(side_effect=lambda *a, **k: events.append("release")),
         session=SimpleNamespace(commit=commit, rollback=AsyncMock(), refresh=AsyncMock()),
     )
     client = SimpleNamespace(cancel_order=AsyncMock(side_effect=cancel))

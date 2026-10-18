@@ -480,7 +480,6 @@ class MercadoPagoCheckoutService:
         reconciliation.last_error_code = "canceled_order_approved"
         reconciliation.next_retry_at = None
 
-
     async def _reconcile_confirmed_payment(
         self, order: Any, transaction: Any, reconciliation: Any
     ) -> None:
@@ -546,9 +545,7 @@ class MercadoPagoCheckoutService:
         await self.repository.session.refresh(order, attribute_names=["status"])
         await self.repository.session.refresh(transaction)
         if order.status in _DISPATCHED:
-            raise ValueError(
-                "Pedido já despachado: o estorno exige o fluxo de devolução."
-            )
+            raise ValueError("Pedido já despachado: o estorno exige o fluxo de devolução.")
         if transaction.status != TransactionStatusEnum.APPROVED:
             raise ValueError("Somente pagamentos aprovados podem ser estornados.")
         reconciliation = await self.repository.get_reconciliation_for_order(order_id, lock=True)

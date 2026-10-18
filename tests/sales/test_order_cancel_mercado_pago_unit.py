@@ -40,14 +40,12 @@ def _cancel_setup(provider: str, ref: str | None, cancel_side_effect=None):
 
     repository = SimpleNamespace(
         get_by_id_for_user=AsyncMock(return_value=order),
-        get_by_id=AsyncMock(return_value=SimpleNamespace(
-            id=order.id, status=OrderStatusEnum.CANCELED
-        )),
+        get_by_id=AsyncMock(
+            return_value=SimpleNamespace(id=order.id, status=OrderStatusEnum.CANCELED)
+        ),
         update_status=update_status,
         get_transaction_for_order=AsyncMock(return_value=transaction),
-        release_active_reservations=AsyncMock(
-            side_effect=lambda *a, **k: events.append("release")
-        ),
+        release_active_reservations=AsyncMock(side_effect=lambda *a, **k: events.append("release")),
         session=SimpleNamespace(commit=commit, rollback=rollback, refresh=AsyncMock()),
     )
     client = SimpleNamespace(cancel_order=AsyncMock(side_effect=cancel))
@@ -173,8 +171,12 @@ def _webhook_setup(order_status: OrderStatusEnum, remote: dict, reconciliation=N
 
     async def create_reconciliation(*args, **kwargs):
         state["reconciliation"] = SimpleNamespace(
-            status="PENDING", attempts=0, last_attempt_at=None, outcome=None,
-            last_error_code=None, next_retry_at=None,
+            status="PENDING",
+            attempts=0,
+            last_attempt_at=None,
+            outcome=None,
+            last_error_code=None,
+            next_retry_at=None,
         )
 
     repository = SimpleNamespace(

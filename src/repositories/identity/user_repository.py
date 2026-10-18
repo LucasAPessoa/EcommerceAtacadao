@@ -14,17 +14,13 @@ class UserRepository:
 
     async def get_by_email(self, email: str) -> Optional[User]:
         result = await self.session.execute(
-            select(User)
-            .options(selectinload(User.role))
-            .where(User.email == email)
+            select(User).options(selectinload(User.role)).where(User.email == email)
         )
         return result.scalar_one_or_none()
 
     async def get_by_id(self, user_id: UUID) -> Optional[User]:
         result = await self.session.execute(
-            select(User)
-            .options(selectinload(User.role))
-            .where(User.id == user_id)
+            select(User).options(selectinload(User.role)).where(User.id == user_id)
         )
         return result.scalar_one_or_none()
 
@@ -42,9 +38,6 @@ class UserRepository:
 
     async def get_multi(self, skip: int = 0, limit: int = 100) -> List[User]:
         result = await self.session.execute(
-            select(User)
-            .options(selectinload(User.role))
-            .offset(skip)
-            .limit(limit)
+            select(User).options(selectinload(User.role)).offset(skip).limit(limit)
         )
         return list(result.scalars().all())
