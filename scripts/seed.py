@@ -844,25 +844,44 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
         reconciliation_sources = [
             (
                 ReconciliationStatusEnum.PENDING,
-                OrderStatusEnum.PAYMENT_RECONCILIATION,
+                orders_by_status[OrderStatusEnum.PAYMENT_RECONCILIATION],
                 None,
                 ReconciliationReasonEnum.STOCK_COMMIT_FAILED,
             ),
             (
                 ReconciliationStatusEnum.IN_REVIEW,
-                OrderStatusEnum.CANCELED,
+                orders_by_status[OrderStatusEnum.CANCELED],
                 ReconciliationOutcomeEnum.MANUAL_REVIEW,
                 ReconciliationReasonEnum.CANCELED_ORDER_APPROVED,
             ),
             (
                 ReconciliationStatusEnum.RESOLVED,
-                OrderStatusEnum.PAID,
+                orders_by_status[OrderStatusEnum.PAID],
                 ReconciliationOutcomeEnum.FULFILLMENT_CONFIRMED,
                 ReconciliationReasonEnum.STOCK_COMMIT_FAILED,
             ),
+            # Motivos de reembolso/chargeback já resolvidos (sem ação pendente);
+            # cada pedido só comporta uma reconciliação (uq_payment_reconciliations_order).
+            (
+                ReconciliationStatusEnum.RESOLVED,
+                orders_by_status[OrderStatusEnum.DELIVERED],
+                ReconciliationOutcomeEnum.REFUNDED,
+                ReconciliationReasonEnum.PAYMENT_REFUNDED,
+            ),
+            (
+                ReconciliationStatusEnum.RESOLVED,
+                orders_by_status[OrderStatusEnum.EXPIRED],
+                ReconciliationOutcomeEnum.MANUAL_REVIEW,
+                ReconciliationReasonEnum.PAYMENT_PARTIALLY_REFUNDED,
+            ),
+            (
+                ReconciliationStatusEnum.RESOLVED,
+                chargeback_order,
+                ReconciliationOutcomeEnum.MANUAL_REVIEW,
+                ReconciliationReasonEnum.PAYMENT_CHARGEBACK,
+            ),
         ]
-        for reconciliation_status, order_status, outcome, reason in reconciliation_sources:
-            order = orders_by_status[order_status]
+        for reconciliation_status, order, outcome, reason in reconciliation_sources:
             transaction_result = await session.execute(
                 select(Transaction).where(Transaction.order_id == order.id)
             )
