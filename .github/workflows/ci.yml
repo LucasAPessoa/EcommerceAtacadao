@@ -22,8 +22,8 @@ env:
   STORE_ORIGIN_ZIP_CODE: "01001000"
 
 jobs:
-  lint-bugs:
-    name: Lint (bugs reais)
+  ruff:
+    name: Ruff (lint + format)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,7 +32,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run ruff check --select E9,F63,F7,F82 src tests
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
 
   unit-tests:
     name: Testes unitários (py${{ matrix.python-version }})
@@ -101,31 +102,17 @@ jobs:
       - name: Testes *_integration.py (sobem o próprio Docker)
         run: uv run pytest -q $(find tests -name '*_integration.py' | sort)
 
-  report-ruff-full:
-    name: Report - ruff completo (não bloqueante)
+  mypy:
+    name: Mypy
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run ruff check src tests
-
-  report-mypy:
-    name: Report - mypy completo (não bloqueante)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv sync --frozen
-      - run: uv run mypy --explicit-package-bases src
+      - run: uv run mypy --explicit-package-bases --warn-unused-ignores src
 
   report-dependency-audit:
     name: Report - auditoria de dependências (não bloqueante)
