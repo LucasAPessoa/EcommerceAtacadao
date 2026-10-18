@@ -1,0 +1,65 @@
+name: Deploy smoke
+
+# Smoke test do alias de producao apos a Vercel publicar a main.
+# Somente leitura: nao migra banco nem faz deploy.
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-smoke
+  cancel-in-progress: false
+
+env:
+  BASE_URL: https://ecommerce-atacadao.vercel.app
+
+jobs:
+  smoke:
+    name: Smoke test (producao)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verificar rotas
+        env:
+          DEPLOYMENT_URL: ${{ github.event.deployment_status.target_url }}
+          DEPLOYMENT_SHA: ${{ github.event.deployment.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          failed=0
+          check() {
+            path="$1"; ok=0
+            for attempt in 1 2 3 4 5; do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 "$BASE_URL$path" || echo 000)
+              echo "GET $path tentativa $attempt/5 -> $code"
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              [ "$attempt" -lt 5 ] && sleep 10
+            done
+            if [ "$ok" -ne 1 ]; then failed=1; echo "- FALHA: \`GET $path\` (ultimo status: $code)" >> fail.txt; fi
+          }
+          : > fail.txt
+          check /health
+          # Rota publica que consulta o banco (listagem de categorias, limit minimo)
+          check "/api/v1/catalog/categories/?limit=1"
+          if [ "$failed" -ne 0 ]; then
+            {
+              echo "## Smoke test FALHOU em producao"
+              echo
+              cat fail.txt
+              echo
+              echo "Commit: \`$DEPLOYMENT_SHA\`"
+              [ -n "$DEPLOYMENT_URL" ] && echo "Deployment: $DEPLOYMENT_URL"
+              echo
+              echo "**Acao:** faca o rollback instantaneo no painel da Vercel (projeto \`ecommerce-atacadao\` > Deployments > deployment estavel anterior > Promote to Production / Instant Rollback)."
+              echo "Execucao: $RUN_URL"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "## Smoke test OK em producao ($DEPLOYMENT_SHA)" >> "$GITHUB_STEP_SUMMARY"
