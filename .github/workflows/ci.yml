@@ -101,6 +101,8 @@ jobs:
         run: uv run alembic check
       - name: Testes *_integration.py (sobem o próprio Docker)
         run: uv run pytest -q $(find tests -name '*_integration.py' | sort)
+      - name: Testes de API (migrações + seed + uvicorn)
+        run: ./scripts/run_api_tests.sh
 
   mypy:
     name: Mypy

@@ -2,7 +2,7 @@
 Shared pytest fixtures for all module tests.
 
 These tests assume:
-- The API is running at http://127.0.0.1:8000
+- The API is running at $BASE_URL (default http://127.0.0.1:8000)
 - The database has been seeded with `python -m scripts.seed --create-tables`
 - An admin user exists: admin@atacadaocenter.com.br / Admin123!
 - A regular user exists: cliente1@example.com / Cliente123!
@@ -36,7 +36,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8000")
 API_V1_PREFIX = "/api/v1"
 
 # Credentials (from scripts/seed.py)
