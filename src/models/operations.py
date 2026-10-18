@@ -41,6 +41,8 @@ class Transaction(Base, TimestampMixin):
         CheckConstraint("installments >= 1", name="ck_transactions_installments_positive"),
         # Desenho: uma Transaction por pedido (criada em OrderRepository.create_order).
         Index("uq_transactions_order_id", "order_id", unique=True),
+        # Criada pela migração 6c2d9f8a7b11 (reconciliação de pagamentos).
+        UniqueConstraint("gateway_ref_id", name="uq_transactions_gateway_ref_id"),
     )
     id: Mapped[uuid.UUID] = uuid_primary_key()
     order_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("orders.id"))
