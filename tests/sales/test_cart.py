@@ -13,6 +13,7 @@ from tests.conftest import API_V1_PREFIX, auth_headers
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _get_first_variant_id(client: httpx.AsyncClient) -> str:
     """Return a variant_id from the catalog, or skip if none exist."""
     resp = await client.get(f"{API_V1_PREFIX}/catalog/products/")
@@ -24,13 +25,9 @@ async def _get_first_variant_id(client: httpx.AsyncClient) -> str:
     raise AssertionError("O catálogo de teste deve conter ao menos uma variação ativa")
 
 
-async def _get_or_create_cart(
-    client: httpx.AsyncClient, token: str
-) -> dict:
+async def _get_or_create_cart(client: httpx.AsyncClient, token: str) -> dict:
     """Get current cart (creates one if missing). Returns the cart data dict."""
-    resp = await client.get(
-        f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(token)
-    )
+    resp = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     return resp.json()["data"]
 
@@ -54,17 +51,14 @@ async def _ensure_cart_has_item(client: httpx.AsyncClient, token: str) -> dict:
 # GET /sales/cart/
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestGetCart:
     """GET /sales/cart/"""
 
     @pytest.mark.asyncio
-    async def test_admin_get_or_create_cart(
-        self, client: httpx.AsyncClient, admin_token: str
-    ):
+    async def test_admin_get_or_create_cart(self, client: httpx.AsyncClient, admin_token: str):
         """Admin should be able to fetch or create a cart."""
-        resp = await client.get(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token)
-        )
+        resp = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token))
         assert resp.status_code == 200, resp.text
         cart = resp.json()["data"]
         assert "id" in cart
@@ -72,13 +66,9 @@ class TestGetCart:
         assert "user_id" in cart
 
     @pytest.mark.asyncio
-    async def test_user_get_or_create_cart(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_user_get_or_create_cart(self, client: httpx.AsyncClient, user_token: str):
         """Fetching a cart must not depend on mutable seed contents."""
-        resp = await client.get(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token)
-        )
+        resp = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token))
         assert resp.status_code == 200, resp.text
         cart = resp.json()["data"]
         assert "id" in cart
@@ -86,9 +76,7 @@ class TestGetCart:
         assert "user_id" in cart
 
     @pytest.mark.asyncio
-    async def test_cart_unauthenticated_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_cart_unauthenticated_returns_401(self, client: httpx.AsyncClient):
         resp = await client.get(f"{API_V1_PREFIX}/sales/cart/")
         assert resp.status_code == 401
 
@@ -97,12 +85,8 @@ class TestGetCart:
         self, client: httpx.AsyncClient, admin_token: str
     ):
         """Two consecutive GETs should return the same cart (idempotent)."""
-        c1 = await client.get(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token)
-        )
-        c2 = await client.get(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token)
-        )
+        c1 = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token))
+        c2 = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(admin_token))
         assert c1.json()["data"]["id"] == c2.json()["data"]["id"]
 
 
@@ -110,13 +94,12 @@ class TestGetCart:
 # POST /sales/cart/items
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAddCartItem:
     """POST /sales/cart/items"""
 
     @pytest.mark.asyncio
-    async def test_add_item_to_cart(
-        self, client: httpx.AsyncClient, admin_token: str
-    ):
+    async def test_add_item_to_cart(self, client: httpx.AsyncClient, admin_token: str):
         variant_id = await _get_first_variant_id(client)
         resp = await client.post(
             f"{API_V1_PREFIX}/sales/cart/items",
@@ -129,9 +112,7 @@ class TestAddCartItem:
         assert variant_id in item_ids
 
     @pytest.mark.asyncio
-    async def test_add_item_unauthenticated_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_add_item_unauthenticated_returns_401(self, client: httpx.AsyncClient):
         resp = await client.post(
             f"{API_V1_PREFIX}/sales/cart/items",
             json={"variant_id": "00000000-0000-0000-0000-000000000000", "quantity": 1},
@@ -207,11 +188,7 @@ class TestAddCartItem:
         assert resp.status_code in (200, 201)
         cart = resp.json()["data"]
         # Just confirm the variant is still in the cart and total quantity is sane
-        total = sum(
-            i["quantity"]
-            for i in cart["items"]
-            if i["variant_id"] == variant_id
-        )
+        total = sum(i["quantity"] for i in cart["items"] if i["variant_id"] == variant_id)
         assert total >= 3  # at least 1 + 2
 
 
@@ -219,13 +196,12 @@ class TestAddCartItem:
 # PATCH /sales/cart/items/{item_id}
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestUpdateCartItem:
     """PATCH /sales/cart/items/{item_id}"""
 
     @pytest.mark.asyncio
-    async def test_update_item_quantity(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_update_item_quantity(self, client: httpx.AsyncClient, user_token: str):
         cart = await _ensure_cart_has_item(client, user_token)
         item_id = cart["items"][0]["id"]
 
@@ -273,13 +249,12 @@ class TestUpdateCartItem:
 # DELETE /sales/cart/items/{item_id}
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestDeleteCartItem:
     """DELETE /sales/cart/items/{item_id}"""
 
     @pytest.mark.asyncio
-    async def test_delete_item_from_cart(
-        self, client: httpx.AsyncClient, admin_token: str
-    ):
+    async def test_delete_item_from_cart(self, client: httpx.AsyncClient, admin_token: str):
         variant_id = await _get_first_variant_id(client)
         # Add an item
         await client.post(
@@ -290,9 +265,7 @@ class TestDeleteCartItem:
         # Fetch the cart
         cart = await _get_or_create_cart(client, admin_token)
         # Find the item we just added
-        target = next(
-            (i for i in cart["items"] if i["variant_id"] == variant_id), None
-        )
+        target = next((i for i in cart["items"] if i["variant_id"] == variant_id), None)
         assert target is not None, "O item adicionado deve ser devolvido pelo carrinho"
         item_id = target["id"]
 
@@ -318,28 +291,21 @@ class TestDeleteCartItem:
 # DELETE /sales/cart/  (clear entire cart)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestClearCart:
     """DELETE /sales/cart/"""
 
     @pytest.mark.asyncio
-    async def test_clear_cart(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
-        resp = await client.delete(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token)
-        )
+    async def test_clear_cart(self, client: httpx.AsyncClient, user_token: str):
+        resp = await client.delete(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token))
         assert resp.status_code in (200, 204), resp.text
 
         # Verify it's empty
-        follow = await client.get(
-            f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token)
-        )
+        follow = await client.get(f"{API_V1_PREFIX}/sales/cart/", headers=auth_headers(user_token))
         assert follow.status_code == 200
         assert follow.json()["data"]["items"] == []
 
     @pytest.mark.asyncio
-    async def test_clear_cart_unauthenticated_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_clear_cart_unauthenticated_returns_401(self, client: httpx.AsyncClient):
         resp = await client.delete(f"{API_V1_PREFIX}/sales/cart/")
         assert resp.status_code == 401

@@ -8,7 +8,5 @@ from src.schemas.catalog.listing_attribute_schema import ListingAttributeRespons
 class ListingAttributeRepository(BaseRepository[ListingAttribute, ListingAttributeResponseSchema]):
     def __init__(self, session: AsyncSession):
         super().__init__(
-            model=ListingAttribute, 
-            response_schema=ListingAttributeResponseSchema, 
-            session=session
+            model=ListingAttribute, response_schema=ListingAttributeResponseSchema, session=session
         )

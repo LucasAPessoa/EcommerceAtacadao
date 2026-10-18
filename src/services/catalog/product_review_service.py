@@ -17,7 +17,7 @@ class ProductReviewService:
         self, review_in: ProductReviewCreateSchema, user_id: UUID
     ) -> ProductReviewResponseSchema:
         """Regras de negócio para avaliações de produtos."""
-        
+
         # O Pydantic já validou o range (1 a 5) pelo schema, mas aqui entra a lógica extra
         if review_in.comment and len(review_in.comment.strip()) < 5:
             raise ValueError(

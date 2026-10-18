@@ -26,9 +26,7 @@ async def run_payment_maintenance(authorization: str | None = Header(default=Non
     if not expected:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
     scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not hmac.compare_digest(
-        token.encode(), expected.encode()
-    ):
+    if scheme.lower() != "bearer" or not hmac.compare_digest(token.encode(), expected.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Não autorizado.",

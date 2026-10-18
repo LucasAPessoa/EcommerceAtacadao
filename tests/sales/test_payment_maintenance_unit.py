@@ -41,8 +41,10 @@ class FakeRepository:
     async def list_abandoned_order_ids(self, now, limit):
         w = self.w
         active = [r for r in w.reservations if r.status == StockReservationStatusEnum.ACTIVE]
-        if w.order.status == OrderStatusEnum.PENDING_PAYMENT and active and all(
-            r.expires_at <= now for r in active
+        if (
+            w.order.status == OrderStatusEnum.PENDING_PAYMENT
+            and active
+            and all(r.expires_at <= now for r in active)
         ):
             return [w.order.id]
         return []
@@ -50,7 +52,8 @@ class FakeRepository:
     async def list_stale_reservation_order_ids(self, now, limit):
         w = self.w
         stale = [
-            r for r in w.reservations
+            r
+            for r in w.reservations
             if r.status == StockReservationStatusEnum.ACTIVE and r.expires_at <= now
         ]
         if stale and w.order.status in {OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED}:
@@ -84,7 +87,8 @@ class FakeRepository:
     async def count_live_active_reservations(self, order_id, now):
         return len(
             [
-                r for r in self.w.reservations
+                r
+                for r in self.w.reservations
                 if r.status == StockReservationStatusEnum.ACTIVE and r.expires_at > now
             ]
         )
@@ -107,14 +111,25 @@ class FakeRepository:
         order.status = new_status
 
 
-def _world(order_status=OrderStatusEnum.PENDING_PAYMENT, tx_status=TransactionStatusEnum.PENDING,
-           ref="ORD-1", expires_in=-5, last_attempt=None, canceled_ago_hours=1,
-           attempts=None, error=None):
+def _world(
+    order_status=OrderStatusEnum.PENDING_PAYMENT,
+    tx_status=TransactionStatusEnum.PENDING,
+    ref="ORD-1",
+    expires_in=-5,
+    last_attempt=None,
+    canceled_ago_hours=1,
+    attempts=None,
+    error=None,
+):
     order = SimpleNamespace(id=uuid4(), status=order_status)
     transaction = SimpleNamespace(
-        status=tx_status, gateway_provider="MERCADO_PAGO" if ref else "MERCADO_PAGO_PREPARING",
-        gateway_ref_id=ref, cancel_confirmed_at=None, cancel_attempts=attempts,
-        cancel_last_attempt_at=last_attempt, cancel_last_error_code=error,
+        status=tx_status,
+        gateway_provider="MERCADO_PAGO" if ref else "MERCADO_PAGO_PREPARING",
+        gateway_ref_id=ref,
+        cancel_confirmed_at=None,
+        cancel_attempts=attempts,
+        cancel_last_attempt_at=last_attempt,
+        cancel_last_error_code=error,
     )
     reservations = [
         SimpleNamespace(
@@ -122,7 +137,9 @@ def _world(order_status=OrderStatusEnum.PENDING_PAYMENT, tx_status=TransactionSt
         )
     ]
     return SimpleNamespace(
-        order=order, transaction=transaction, reservations=reservations,
+        order=order,
+        transaction=transaction,
+        reservations=reservations,
         canceled_at=NOW - timedelta(hours=canceled_ago_hours),
     )
 
@@ -164,8 +181,9 @@ def _settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_stale_reservation_of_canceled_order_expires() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   ref=None)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED, ref=None
+    )
     service, _ = _service(world)
 
     result = await service.run(NOW)
@@ -241,8 +259,11 @@ async def test_payment_approved_while_waiting_for_lock_aborts_expiration() -> No
 
 
 async def test_retry_confirms_cancel_and_releases_reservation() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, events = _service(world)
 
     result = await service.run(NOW)
@@ -254,8 +275,12 @@ async def test_retry_confirms_cancel_and_releases_reservation() -> None:
 
 
 async def test_retry_failure_increments_attempts_and_keeps_reservation() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10, attempts=1)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+        attempts=1,
+    )
     service, _ = _service(world, MercadoPagoError("boom", status_code=503))
 
     result = await service.run(NOW)
@@ -268,8 +293,12 @@ async def test_retry_failure_increments_attempts_and_keeps_reservation() -> None
 
 
 async def test_retry_stops_after_max_attempts() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10, attempts=3)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+        attempts=3,
+    )
     service, events = _service(world)
 
     assert (await service.run(NOW)).cancel_retries == 0
@@ -278,8 +307,11 @@ async def test_retry_stops_after_max_attempts() -> None:
 
 @pytest.mark.parametrize("status_code", [404, 410])
 async def test_provider_terminal_error_is_not_retried(status_code: int) -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, _ = _service(world, MercadoPagoError("gone", status_code=status_code))
 
     first = await service.run(NOW)
@@ -291,8 +323,11 @@ async def test_provider_terminal_error_is_not_retried(status_code: int) -> None:
 
 
 async def test_400_is_retryable_and_limited_by_max_attempts() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, _ = _service(world, MercadoPagoError("bad", status_code=400))
 
     for step in range(5):
@@ -307,8 +342,11 @@ async def test_400_is_retryable_and_limited_by_max_attempts() -> None:
 async def test_ambiguous_error_with_dead_remote_order_confirms_cancel(
     status_code: int, remote: str
 ) -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, _ = _service(world, MercadoPagoError("x", status_code=status_code), remote)
 
     result = await service.run(NOW)
@@ -319,8 +357,11 @@ async def test_ambiguous_error_with_dead_remote_order_confirms_cancel(
 
 
 async def test_ambiguous_error_with_paid_remote_order_is_terminal_without_confirming() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, _ = _service(world, MercadoPagoError("x", status_code=409), "processed")
 
     result = await service.run(NOW)
@@ -333,8 +374,11 @@ async def test_ambiguous_error_with_paid_remote_order_is_terminal_without_confir
 
 @pytest.mark.parametrize("remote", ["action_required", None])
 async def test_ambiguous_error_with_other_status_or_lookup_failure_is_retryable(remote) -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, events = _service(world, MercadoPagoError("x", status_code=422), remote)
 
     await service.run(NOW)
@@ -345,8 +389,11 @@ async def test_ambiguous_error_with_other_status_or_lookup_failure_is_retryable(
 
 
 async def test_backoff_blocks_attempts_before_interval() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+    )
     service, events = _service(world, MercadoPagoError("x", status_code=503))
 
     await service.run(NOW)  # tentativa 1 em NOW
@@ -361,8 +408,13 @@ async def test_backoff_blocks_attempts_before_interval() -> None:
 
 
 async def test_backoff_is_revalidated_under_lock() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10, attempts=2, last_attempt=NOW - timedelta(minutes=1))
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+        attempts=2,
+        last_attempt=NOW - timedelta(minutes=1),
+    )
     service, events = _service(world)
     # Candidato escolhido pela query; outra execução registrou tentativa recente antes do lock.
     assert await service._prepare_remote_cancel(world.order.id, NOW, True) is None
@@ -405,8 +457,12 @@ async def test_remote_batch_size_limits_remote_cancels_per_run() -> None:
 
 
 async def test_retry_outside_window_is_ignored() -> None:
-    world = _world(order_status=OrderStatusEnum.CANCELED, tx_status=TransactionStatusEnum.CANCELED,
-                   expires_in=10, canceled_ago_hours=25)
+    world = _world(
+        order_status=OrderStatusEnum.CANCELED,
+        tx_status=TransactionStatusEnum.CANCELED,
+        expires_in=10,
+        canceled_ago_hours=25,
+    )
     service, events = _service(world)
 
     assert (await service.run(NOW)).cancel_retries == 0

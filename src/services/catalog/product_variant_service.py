@@ -17,13 +17,13 @@ class ProductVariantService:
         self, variant_in: ProductVariantCreateSchema
     ) -> ProductVariantResponseSchema:
         """Regras de negócio para as variações (SKUs) do produto."""
-        
+
         if not variant_in.bling_sku or not variant_in.bling_sku.strip():
             raise ValueError("A variação precisa obrigatoriamente de um SKU do Bling.")
-            
+
         if variant_in.base_price < 0:
             raise ValueError("O preço base não pode ser negativo, che.")
-            
+
         if variant_in.stock_quantity < 0:
             raise ValueError("O estoque não pode ser negativo.")
 
@@ -41,7 +41,7 @@ class ProductVariantService:
     ) -> Optional[ProductVariantResponseSchema]:
         if variant_in.base_price is not None and variant_in.base_price < 0:
             raise ValueError("O preço atualizado não pode ser negativo.")
-            
+
         data = variant_in.model_dump(exclude_unset=True)
         return await self.repository.update(variant_id, data)
 

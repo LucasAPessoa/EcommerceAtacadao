@@ -17,10 +17,9 @@ class ProductQuestionService:
         self, question_in: ProductQuestionCreateSchema, user_id: UUID
     ) -> ProductQuestionResponseSchema:
         """Regras de negócio para perguntas e respostas."""
-        
+
         if not question_in.question_text.strip():
             raise ValueError("A pergunta não pode estar vazia.")
-
 
         data = question_in.model_dump()
         data["user_id"] = user_id  # autor = usuário autenticado

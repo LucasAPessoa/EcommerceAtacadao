@@ -20,10 +20,10 @@ class ListingAttributeService:
         Regras de negócio para os atributos do anúncio
         (ficha técnica do Mercado Livre, por exemplo).
         """
-        
+
         if not attribute_in.name.strip():
             raise ValueError("O nome do atributo não pode ser vazio, che.")
-            
+
         if not attribute_in.value.strip():
             raise ValueError("O valor do atributo não pode ser vazio.")
 

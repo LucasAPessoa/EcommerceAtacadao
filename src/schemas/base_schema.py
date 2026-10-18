@@ -8,5 +8,6 @@ class TimestampMixinSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class SoftDeleteMixinSchema(TimestampMixinSchema):
     deleted_at: Optional[datetime] = None

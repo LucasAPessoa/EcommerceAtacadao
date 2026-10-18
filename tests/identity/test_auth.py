@@ -20,6 +20,7 @@ from tests.conftest import (
 # /auth/register
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestRegister:
     """POST /auth/register"""
 
@@ -38,9 +39,7 @@ class TestRegister:
         assert "password_hash" not in body["data"]
 
     @pytest.mark.asyncio
-    async def test_register_duplicate_email_returns_400(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_duplicate_email_returns_400(self, client: httpx.AsyncClient):
         """Re-registering an existing email should return 400."""
         payload = make_user_payload(email=unique_email("reg_dup"))
         # First registration
@@ -52,9 +51,7 @@ class TestRegister:
         assert "already" in resp2.text.lower() or "existe" in resp2.text.lower()
 
     @pytest.mark.asyncio
-    async def test_register_missing_email_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_missing_email_returns_422(self, client: httpx.AsyncClient):
         """Missing required email field should return 422 (Pydantic validation)."""
         payload = make_user_payload()
         del payload["email"]
@@ -62,36 +59,28 @@ class TestRegister:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_register_invalid_email_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_invalid_email_returns_422(self, client: httpx.AsyncClient):
         """Invalid email format should return 422."""
         payload = make_user_payload(email="not-an-email")
         resp = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_register_weak_password_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_weak_password_returns_422(self, client: httpx.AsyncClient):
         """Password without upper/lower/digit/special should fail validation."""
         payload = make_user_payload(password="weakpass")
         resp = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_register_short_password_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_short_password_returns_422(self, client: httpx.AsyncClient):
         """Password shorter than 8 chars should fail validation."""
         payload = make_user_payload(password="Aa1!")  # 4 chars
         resp = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_register_response_excludes_password(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_register_response_excludes_password(self, client: httpx.AsyncClient):
         """The response should never include the password or password_hash."""
         payload = make_user_payload(email=unique_email("reg_nopwd"))
         resp = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
@@ -104,15 +93,14 @@ class TestRegister:
 # /auth/login
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestLogin:
     """POST /auth/login"""
 
     @pytest.mark.asyncio
     async def test_admin_login_succeeds(self, client: httpx.AsyncClient):
         """Admin credentials should return 200 + token pair."""
-        resp = await client.post(
-            f"{API_V1_PREFIX}/auth/login", json=ADMIN_CREDENTIALS
-        )
+        resp = await client.post(f"{API_V1_PREFIX}/auth/login", json=ADMIN_CREDENTIALS)
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["status"] == "success"
@@ -124,50 +112,38 @@ class TestLogin:
     @pytest.mark.asyncio
     async def test_user_login_succeeds(self, client: httpx.AsyncClient):
         """cliente1 credentials should return 200 + token pair."""
-        resp = await client.post(
-            f"{API_V1_PREFIX}/auth/login", json=USER_CREDENTIALS
-        )
+        resp = await client.post(f"{API_V1_PREFIX}/auth/login", json=USER_CREDENTIALS)
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["data"]["access_token"]
         assert body["data"]["refresh_token"]
 
     @pytest.mark.asyncio
-    async def test_login_wrong_password_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_login_wrong_password_returns_401(self, client: httpx.AsyncClient):
         """Wrong password should return 401."""
         payload = {"email": ADMIN_CREDENTIALS["email"], "password": "WrongPass1!"}
         resp = await client.post(f"{API_V1_PREFIX}/auth/login", json=payload)
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_login_nonexistent_email_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_login_nonexistent_email_returns_401(self, client: httpx.AsyncClient):
         """Non-existent email should return 401 (not 404, to avoid enumeration)."""
         payload = {"email": "nobody@example.com", "password": "AnyPass1!"}
         resp = await client.post(f"{API_V1_PREFIX}/auth/login", json=payload)
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_login_missing_fields_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_login_missing_fields_returns_422(self, client: httpx.AsyncClient):
         """Missing email or password should return 422."""
         resp1 = await client.post(
             f"{API_V1_PREFIX}/auth/login", json={"email": ADMIN_CREDENTIALS["email"]}
         )
         assert resp1.status_code == 422
-        resp2 = await client.post(
-            f"{API_V1_PREFIX}/auth/login", json={"password": "anything"}
-        )
+        resp2 = await client.post(f"{API_V1_PREFIX}/auth/login", json={"password": "anything"})
         assert resp2.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_login_invalid_email_format_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_login_invalid_email_format_returns_422(self, client: httpx.AsyncClient):
         """Malformed email should return 422 (not 401)."""
         resp = await client.post(
             f"{API_V1_PREFIX}/auth/login",
@@ -179,6 +155,7 @@ class TestLogin:
 # ─────────────────────────────────────────────────────────────────────────────
 # /auth/refresh
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestRefresh:
     """POST /auth/refresh"""
@@ -200,9 +177,7 @@ class TestRefresh:
         assert body["data"]["refresh_token"] != admin_refresh_token
 
     @pytest.mark.asyncio
-    async def test_refresh_with_invalid_token_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_refresh_with_invalid_token_returns_401(self, client: httpx.AsyncClient):
         """Garbage refresh token should return 401."""
         resp = await client.post(
             f"{API_V1_PREFIX}/auth/refresh",
@@ -229,9 +204,7 @@ class TestRefresh:
         assert resp2.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_refresh_missing_token_returns_422(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_refresh_missing_token_returns_422(self, client: httpx.AsyncClient):
         """Missing refresh_token field should return 422."""
         resp = await client.post(f"{API_V1_PREFIX}/auth/refresh", json={})
         assert resp.status_code == 422
@@ -240,6 +213,7 @@ class TestRefresh:
 # ─────────────────────────────────────────────────────────────────────────────
 # /auth/logout
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestLogout:
     """POST /auth/logout"""
@@ -299,9 +273,7 @@ class TestLogout:
     ):
         """After logout, the revoked refresh token can't be used to refresh."""
         # Login fresh to get a new refresh token
-        login = await client.post(
-            f"{API_V1_PREFIX}/auth/login", json=USER_CREDENTIALS
-        )
+        login = await client.post(f"{API_V1_PREFIX}/auth/login", json=USER_CREDENTIALS)
         refresh = login.json()["data"]["refresh_token"]
         # Logout
         await client.post(
@@ -321,13 +293,12 @@ class TestLogout:
 # Security: token tampering
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAuthSecurity:
     """Negative tests around token integrity."""
 
     @pytest.mark.asyncio
-    async def test_access_with_malformed_bearer_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_access_with_malformed_bearer_returns_401(self, client: httpx.AsyncClient):
         """A non-JWT bearer token should return 401."""
         resp = await client.get(
             f"{API_V1_PREFIX}/users/me",
@@ -336,12 +307,11 @@ class TestAuthSecurity:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_access_with_wrong_signature_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_access_with_wrong_signature_returns_401(self, client: httpx.AsyncClient):
         """A JWT signed with the wrong key should return 401."""
         # Forge a token with the right shape but wrong secret
         import jwt as pyjwt
+
         # Use a known-fake secret to produce a malformed signature
         fake = pyjwt.encode(
             {"sub": ADMIN_CREDENTIALS["email"], "type": "access"},

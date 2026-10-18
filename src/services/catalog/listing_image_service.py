@@ -16,7 +16,7 @@ class ListingImageService:
     async def create_image(self, image_in: ListingImageCreateSchema) -> ListingImageResponseSchema:
         if not image_in.url.startswith("http"):
             raise ValueError("A URL da imagem tem que ser válida e começar com http ou https, che.")
-            
+
         if image_in.sort_order < 0:
             raise ValueError("A ordem da imagem não pode ser negativa.")
 

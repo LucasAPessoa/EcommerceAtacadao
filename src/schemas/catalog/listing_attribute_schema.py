@@ -13,8 +13,10 @@ class ListingAttributeBaseSchema(BaseModel):
     value: str = Field(..., max_length=255)
     unit: Optional[str] = Field(None, max_length=50)
 
+
 class ListingAttributeCreateSchema(ListingAttributeBaseSchema):
     listing_id: UUID
+
 
 class ListingAttributeUpdateSchema(BaseModel):
     bling_external_id: Optional[str] = Field(None, max_length=50)
@@ -22,6 +24,7 @@ class ListingAttributeUpdateSchema(BaseModel):
     attribute_type: Optional[str] = Field(None, max_length=50)
     value: Optional[str] = Field(None, max_length=255)
     unit: Optional[str] = Field(None, max_length=50)
+
 
 class ListingAttributeResponseSchema(ListingAttributeBaseSchema, TimestampMixinSchema):
     id: UUID

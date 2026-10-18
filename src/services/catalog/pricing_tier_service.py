@@ -18,7 +18,7 @@ class PricingTierService:
             raise ValueError(
                 "Para um preço de atacado (tier), a quantidade mínima deve ser maior que 1, bo."
             )
-            
+
         if tier_in.unit_price <= 0:
             raise ValueError("O preço da faixa não pode ser zero ou negativo.")
 

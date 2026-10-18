@@ -16,6 +16,7 @@ from tests.conftest import (
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def make_address_payload(
     zip_code: str = "01310100",
     street: str = "Avenida Paulista",
@@ -40,17 +41,14 @@ def make_address_payload(
 # /addresses/  (list + create)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAddressesListCreate:
     """GET /addresses/ and POST /addresses/"""
 
     @pytest.mark.asyncio
-    async def test_list_user_addresses(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_list_user_addresses(self, client: httpx.AsyncClient, user_token: str):
         """cliente1 should be able to list their own addresses (seeded 1)."""
-        resp = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        resp = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         assert resp.status_code == 200, resp.text
         addrs = resp.json()["data"]
         assert isinstance(addrs, list)
@@ -58,16 +56,12 @@ class TestAddressesListCreate:
         assert len(addrs) >= 1
 
     @pytest.mark.asyncio
-    async def test_list_unauthenticated_returns_401(
-        self, client: httpx.AsyncClient
-    ):
+    async def test_list_unauthenticated_returns_401(self, client: httpx.AsyncClient):
         resp = await client.get(f"{API_V1_PREFIX}/addresses/")
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_create_address_succeeds(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_create_address_succeeds(self, client: httpx.AsyncClient, user_token: str):
         payload = make_address_payload(street="Rua Nova Teste")
         resp = await client.post(
             f"{API_V1_PREFIX}/addresses/",
@@ -105,12 +99,8 @@ class TestAddressesListCreate:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_create_address_unauthenticated_returns_401(
-        self, client: httpx.AsyncClient
-    ):
-        resp = await client.post(
-            f"{API_V1_PREFIX}/addresses/", json=make_address_payload()
-        )
+    async def test_create_address_unauthenticated_returns_401(self, client: httpx.AsyncClient):
+        resp = await client.post(f"{API_V1_PREFIX}/addresses/", json=make_address_payload())
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
@@ -128,9 +118,7 @@ class TestAddressesListCreate:
         cliente1_addr_id = create.json()["data"]["id"]
 
         # cliente2 lists their addresses
-        list2 = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user2_token)
-        )
+        list2 = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user2_token))
         assert list2.status_code == 200
         cliente2_ids = {a["id"] for a in list2.json()["data"]}
         assert cliente1_addr_id not in cliente2_ids
@@ -140,17 +128,14 @@ class TestAddressesListCreate:
 # /addresses/{id}  (get / patch / delete)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAddressById:
     """GET/PATCH/DELETE /addresses/{address_id}"""
 
     @pytest.mark.asyncio
-    async def test_get_own_address(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_get_own_address(self, client: httpx.AsyncClient, user_token: str):
         # Get the seeded default address
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.get(
@@ -165,9 +150,7 @@ class TestAddressById:
         self, client: httpx.AsyncClient, user_token: str, user2_token: str
     ):
         """SECURITY: cliente2 should not be able to fetch cliente1's address."""
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.get(
@@ -198,12 +181,8 @@ class TestAddressById:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_patch_address(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+    async def test_patch_address(self, client: httpx.AsyncClient, user_token: str):
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.patch(
@@ -220,9 +199,7 @@ class TestAddressById:
     async def test_patch_other_users_address_returns_404_or_403(
         self, client: httpx.AsyncClient, user_token: str, user2_token: str
     ):
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.patch(
@@ -233,9 +210,7 @@ class TestAddressById:
         assert resp.status_code in (403, 404), resp.text
 
     @pytest.mark.asyncio
-    async def test_delete_address(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_delete_address(self, client: httpx.AsyncClient, user_token: str):
         # Create a fresh one to delete
         create = await client.post(
             f"{API_V1_PREFIX}/addresses/",
@@ -255,9 +230,7 @@ class TestAddressById:
     async def test_delete_other_users_address_returns_404_or_403(
         self, client: httpx.AsyncClient, user_token: str, user2_token: str
     ):
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.delete(
@@ -271,13 +244,12 @@ class TestAddressById:
 # /addresses/{id}/default
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestAddressDefault:
     """POST /addresses/{address_id}/default"""
 
     @pytest.mark.asyncio
-    async def test_set_default_address(
-        self, client: httpx.AsyncClient, user_token: str
-    ):
+    async def test_set_default_address(self, client: httpx.AsyncClient, user_token: str):
         # Create a new (non-default) address
         create = await client.post(
             f"{API_V1_PREFIX}/addresses/",
@@ -299,9 +271,7 @@ class TestAddressDefault:
     async def test_set_default_for_other_users_address_fails(
         self, client: httpx.AsyncClient, user_token: str, user2_token: str
     ):
-        listing = await client.get(
-            f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token)
-        )
+        listing = await client.get(f"{API_V1_PREFIX}/addresses/", headers=auth_headers(user_token))
         addr_id = listing.json()["data"][0]["id"]
 
         resp = await client.post(

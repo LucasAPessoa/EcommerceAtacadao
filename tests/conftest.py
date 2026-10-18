@@ -58,6 +58,7 @@ USER2_CREDENTIALS = {
 # Event loop
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Session-scoped event loop so async fixtures can share state."""
@@ -70,6 +71,7 @@ def event_loop():
 # HTTP client
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[httpx.AsyncClient]:
     """An async HTTP client bound to the live API."""
@@ -81,9 +83,8 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
 # Auth helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _login(
-    client: httpx.AsyncClient, email: str, password: str
-) -> Dict[str, str]:
+
+async def _login(client: httpx.AsyncClient, email: str, password: str) -> Dict[str, str]:
     """Login and return the access+refresh token pair (or raise)."""
     resp = await client.post(
         f"{API_V1_PREFIX}/auth/login", json={"email": email, "password": password}
@@ -92,9 +93,7 @@ async def _login(
     return resp.json()["data"]
 
 
-async def _register(
-    client: httpx.AsyncClient, payload: Dict[str, Any]
-) -> Dict[str, Any]:
+async def _register(client: httpx.AsyncClient, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Register a new user; returns the user payload. Tolerates 'already registered'."""
     resp = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
     if resp.status_code in (200, 201):
@@ -107,6 +106,7 @@ async def _register(
 # ─────────────────────────────────────────────────────────────────────────────
 # Token fixtures
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest_asyncio.fixture
 async def admin_token(client: httpx.AsyncClient) -> str:
@@ -147,6 +147,7 @@ async def user2_token(client: httpx.AsyncClient) -> str:
 # Auth header helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def auth_headers(token: str) -> Dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -154,6 +155,7 @@ def auth_headers(token: str) -> Dict[str, str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Unique email generator
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def unique_email(prefix: str = "test") -> str:
     """Generate a unique email to avoid collisions between test runs."""
@@ -163,6 +165,7 @@ def unique_email(prefix: str = "test") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Common payloads
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def make_user_payload(
     email: Optional[str] = None,

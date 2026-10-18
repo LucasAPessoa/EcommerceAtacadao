@@ -15,13 +15,13 @@ class ProductImageService:
 
     async def create_image(self, image_in: ProductImageCreateSchema) -> ProductImageResponseSchema:
         """Regras de negócio para imagens das variações."""
-        
+
         if not image_in.image_url.startswith(("http://", "https://")):
             raise ValueError("A URL da imagem deve ser um link válido (http ou https), che.")
-            
+
         # Opcional: Se 'is_main' for True, tu poderias desmarcar as outras imagens
         # da mesma variante no banco
-        
+
         data = image_in.model_dump(exclude_unset=True)
         return await self.repository.create(data)
 
@@ -36,7 +36,7 @@ class ProductImageService:
     ) -> Optional[ProductImageResponseSchema]:
         if image_in.image_url and not image_in.image_url.startswith(("http://", "https://")):
             raise ValueError("A nova URL da imagem deve ser válida.")
-            
+
         data = image_in.model_dump(exclude_unset=True)
         return await self.repository.update(image_id, data)
 
