@@ -427,7 +427,7 @@ def test_settings_accept_storage_redis_url_alias(monkeypatch) -> None:
 
 
 def test_backend_selection_prefers_tcp_over_rest(monkeypatch) -> None:
-    from src import main
+    from src import store_app as main
 
     both = _settings(
         monkeypatch,

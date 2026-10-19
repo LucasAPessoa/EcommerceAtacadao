@@ -94,6 +94,21 @@ usuário, não como autorização de preço. Falha do provedor externo deve mant
 status de indisponibilidade apropriado e uma mensagem sem credenciais ou corpo
 sensível do provedor.
 
+## Integração Bling (conexão da conta)
+
+Prefixo `/api/v1/integrations/bling`. Contrato completo em
+`specs/001-bling-integracao/contracts/http-api.md`. Nenhuma resposta contém token.
+
+| Rota | Acesso | Resultado |
+| --- | --- | --- |
+| `POST /connect` | admin | 200 `{authorize_url}`; 409 se já `CONNECTED` |
+| `GET /callback?code&state` | público | sempre 302 para `{FRONT_URL}/admin/integracoes/bling?resultado=conectado\|recusado\|empresa_diferente\|invalido` |
+| `GET /status` | admin | estado, empresa, datas, último erro e 10 eventos recentes |
+| `POST /disconnect` | admin | revoga no Bling (melhor esforço), apaga tokens, mantém `company_id`; 409 se `NOT_CONNECTED` |
+
+Sem as variáveis do Bling configuradas, `/connect` e `/callback` respondem 503
+("Integração com o Bling não configurada."); o deploy sem Bling segue funcionando.
+
 ## Matriz resumida
 
 | Área | Público | Usuário autenticado | Admin |
@@ -106,6 +121,7 @@ sensível do provedor.
 | Carrinho/checkout | Não | Apenas próprio | Como usuário, salvo rota explícita |
 | Pedidos | Não | Apenas próprios | Visão administrativa |
 | Perfil/endereços | Não | Apenas próprios | Sem acesso implícito |
+| Conexão Bling | Só `/callback` (valida `state`) | Não | Sim |
 
 Administração não elimina ownership automaticamente. Só amplie acesso quando a
 rota e a regra de negócio declararem isso explicitamente.

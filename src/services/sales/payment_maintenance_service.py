@@ -4,6 +4,7 @@ Cada item roda em transação curta (lock -> refresh -> revalidação). Nenhuma 
 de rede acontece com lock/transação aberta. Pedidos pagos nunca são tocados.
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -19,6 +20,7 @@ from src.core.config import settings
 from src.integrations.mercado_pago.client import MercadoPagoClient, MercadoPagoError
 from src.models.enums import OrderStatusEnum, TransactionStatusEnum
 from src.repositories.sales.order_repository import OrderRepository
+from src.services.integrations.bling_connection_service import run_connection_check
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +149,10 @@ class PaymentMaintenanceService:
                 break
             await self._attempt_remote_cancel(order_id, now, result, enforce_limits=True)
 
+        if not out_of_budget():
+            remaining = max(time_budget_seconds - (time.monotonic() - started), 0.1)
+            await self._check_bling_connection(remaining)
+
         logger.info(
             "payment_maintenance_run expired_reservations=%s expired_orders=%s "
             "cancel_retries=%s cancel_failures=%s interrupted_by_budget=%s",
@@ -157,6 +163,18 @@ class PaymentMaintenanceService:
             result.interrupted_by_budget,
         )
         return result
+
+    async def _check_bling_connection(self, timeout_seconds: float | None = None) -> None:
+        """Verificação da conexão Bling, limitada ao orçamento restante.
+
+        Falha ou timeout aqui nunca afeta o que a manutenção já processou.
+        """
+        try:
+            await asyncio.wait_for(run_connection_check(self.session_factory), timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning("bling_connection_check_timeout")
+        except Exception as exc:
+            logger.warning("bling_connection_check_crashed error=%s", type(exc).__name__)
 
     async def _expire_abandoned_order(
         self, order_id: UUID, now: datetime, grace_cutoff: datetime
