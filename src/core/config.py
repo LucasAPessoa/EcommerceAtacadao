@@ -85,6 +85,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_FAILURE_COOLDOWN_SECONDS: float = 30.0
     MAX_REQUEST_BODY_BYTES: int = 1_048_576
 
+    # Integração Bling (opcional na inicialização: sem elas os endpoints respondem
+    # "não configurado"). Segredos ficam fora de repr/log.
+    TENANT_ID: str = ""
+    FRONT_URL: str = ""
+    BLING_CLIENT_ID: str = ""
+    BLING_CLIENT_SECRET: str = Field(default="", repr=False)
+    BLING_TOKEN_ENCRYPTION_KEY: str = Field(default="", repr=False)
+    BLING_STATE_SIGNING_KEY: str = Field(default="", repr=False)
+    BLING_AUTH_BASE_URL: str = "https://www.bling.com.br/Api/v3"
+    BLING_API_BASE_URL: str = "https://api.bling.com.br/Api/v3"
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def configure_async_postgres_driver(cls, value: str) -> str:
@@ -99,6 +110,20 @@ class Settings(BaseSettings):
             for origin in self.CORS_ALLOWED_ORIGINS.split(",")
             if origin.strip() and origin.strip() != "*"
         ]
+
+    @property
+    def bling_configured(self) -> bool:
+        """True quando todas as variáveis necessárias à conexão Bling estão presentes."""
+        return all(
+            (
+                self.TENANT_ID,
+                self.FRONT_URL,
+                self.BLING_CLIENT_ID,
+                self.BLING_CLIENT_SECRET,
+                self.BLING_TOKEN_ENCRYPTION_KEY,
+                self.BLING_STATE_SIGNING_KEY,
+            )
+        )
 
     # Configuração do Pydantic para ler o arquivo .env
     model_config = SettingsConfigDict(
