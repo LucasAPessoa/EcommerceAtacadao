@@ -26,6 +26,20 @@ O código de aplicação fica em `app/` e segue estas responsabilidades:
 - `routers/`: autenticação, autorização, tradução HTTP e serialização.
 - `integrations/`: clientes de serviços externos.
 
+Integração Bling (`src/integrations/bling/`): `state.py` (state OAuth assinado, funções
+puras compartilhadas com o redirecionador), `oauth.py` (authorize, troca/renovação/revogação
+de token, empresa), `errors.py` e `client.py`. `BlingClient.request(method, path, *, params,
+json)` obtém o access token via `BlingTokenProvider` (renovação sob `FOR UPDATE`, uma por
+vez), limita a 2,5 req/s por processo, repete só 429/5xx/rede (esperas 1, 2, 4 e 8 s com
+jitter, respeita `Retry-After`), renova uma vez após 401 e classifica os erros
+(`BlingNotConnected`, `ReconnectRequired`, `RateLimited`, `Unavailable`, `Rejected`).
+Tokens ficam criptografados (Fernet, `src/core/crypto.py`). Env novas, todas opcionais:
+`TENANT_ID`, `FRONT_URL`, `BLING_CLIENT_ID`, `BLING_CLIENT_SECRET`,
+`BLING_TOKEN_ENCRYPTION_KEY`, `BLING_STATE_SIGNING_KEY`, `BLING_AUTH_BASE_URL`,
+`BLING_API_BASE_URL`. O job de manutenção de pagamentos também verifica a conexão Bling.
+Testes de API usam o Bling simulado `tests/fakes/bling_fake.py` (sobe no
+`scripts/run_api_tests.sh`).
+
 Mantenha o fluxo `router -> service -> repository -> banco/integração`. Um router
 não deve calcular preço nem montar transação; um repository não deve decidir
 status HTTP.
