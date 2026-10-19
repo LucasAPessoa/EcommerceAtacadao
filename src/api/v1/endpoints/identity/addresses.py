@@ -1,9 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.identity.address_repository import AddressRepository
@@ -18,7 +17,9 @@ from src.services.identity.address_service import AddressService
 router = APIRouter(prefix="/addresses", tags=["Addresses"])
 
 
-def get_address_service(session: AsyncSession = Depends(get_db)) -> AddressService:
+def get_address_service(
+    session: DbSession,
+) -> AddressService:
     return AddressService(AddressRepository(session))
 
 

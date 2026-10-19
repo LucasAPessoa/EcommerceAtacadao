@@ -1,8 +1,5 @@
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.repositories.catalog.listing_attribute_repository import ListingAttributeRepository
 from src.schemas.catalog.listing_attribute_schema import (
     ListingAttributeCreateSchema,
@@ -13,7 +10,7 @@ from src.services.catalog.listing_attribute_service import ListingAttributeServi
 
 
 def get_listing_attribute_service(
-    session: AsyncSession = Depends(get_db),
+    session: DbSession,
 ) -> ListingAttributeService:
     repository = ListingAttributeRepository(session)
     return ListingAttributeService(repository)

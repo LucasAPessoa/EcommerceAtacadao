@@ -1,9 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import require_role
 from src.integrations.mercado_pago.client import MercadoPagoError
 from src.models.identity import User
@@ -20,11 +19,13 @@ from src.services.sales.order_service import OrderService
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
-def get_order_service(session: AsyncSession = Depends(get_db)) -> OrderService:
+def get_order_service(session: DbSession) -> OrderService:
     return OrderService(repository=OrderRepository(session))
 
 
-def get_mercado_pago_service(session: AsyncSession = Depends(get_db)) -> MercadoPagoCheckoutService:
+def get_mercado_pago_service(
+    session: DbSession,
+) -> MercadoPagoCheckoutService:
     return MercadoPagoCheckoutService(checkout_service=None, repository=OrderRepository(session))
 
 

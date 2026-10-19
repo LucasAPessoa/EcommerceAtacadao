@@ -3,9 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.integrations.bling_connection_repository import BlingConnectionRepository
@@ -28,7 +27,7 @@ class BlingConnectResponse(BaseModel):
 
 
 def get_bling_connection_service(
-    session: AsyncSession = Depends(get_db),
+    session: DbSession,
 ) -> BlingConnectionService:
     return BlingConnectionService(BlingConnectionRepository(session))
 

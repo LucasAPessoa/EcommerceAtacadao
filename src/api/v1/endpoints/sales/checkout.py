@@ -1,9 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.rate_limit import enforce_verified_webhook_rate_limit
 from src.core.sec import require_role
 from src.integrations.melhor_envio.client import MelhorEnvioError
@@ -33,7 +32,9 @@ from src.services.sales.mercado_pago_service import (
 router = APIRouter(prefix="/checkout", tags=["Checkout"])
 
 
-def get_checkout_service(session: AsyncSession = Depends(get_db)) -> CheckoutService:
+def get_checkout_service(
+    session: DbSession,
+) -> CheckoutService:
     variant_repository = ProductVariantRepository(session)
     return CheckoutService(
         session=session,
@@ -43,7 +44,7 @@ def get_checkout_service(session: AsyncSession = Depends(get_db)) -> CheckoutSer
 
 
 def get_mercado_pago_checkout_service(
-    session: AsyncSession = Depends(get_db),
+    session: DbSession,
 ) -> MercadoPagoCheckoutService:
     repository = OrderRepository(session)
     return MercadoPagoCheckoutService(

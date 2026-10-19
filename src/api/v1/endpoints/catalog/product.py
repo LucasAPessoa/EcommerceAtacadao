@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.repositories.catalog.product_repository import ProductRepository
 from src.schemas.catalog.product_schema import (
     ProductCreateSchema,
@@ -13,7 +12,9 @@ from src.schemas.response_schema import BaseResponse
 from src.services.catalog.product_service import ProductService
 
 
-def get_product_service(session: AsyncSession = Depends(get_db)) -> ProductService:
+def get_product_service(
+    session: DbSession,
+) -> ProductService:
     repository = ProductRepository(session)
     return ProductService(repository)
 
