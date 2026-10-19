@@ -19,6 +19,9 @@ from .catalog import (
 # Domínio de Identidade (Roles, Users, Auth, Addresses)
 from .identity import Address, RefreshToken, Role, User
 
+# Domínio de Integrações (Bling)
+from .integrations import BlingAuthorizationAttempt, BlingConnection, BlingConnectionEvent
+
 # Domínio de Operações/Fulfillment (Payments, Logistics, Webhooks)
 from .operations import (
     ERPWebhookLog,
@@ -57,4 +60,7 @@ __all__ = [
     "LocalCEPRange",
     "Shipment",
     "ERPWebhookLog",
+    "BlingConnection",
+    "BlingAuthorizationAttempt",
+    "BlingConnectionEvent",
 ]
