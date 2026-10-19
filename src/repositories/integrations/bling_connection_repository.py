@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,26 @@ class BlingConnectionRepository:
         connection = await self.get_for_update()
         assert connection is not None
         return connection
+
+    async def commit(self) -> None:
+        """Fecha a unidade de trabalho (o service precisa persistir antes de levantar erro)."""
+        await self.session.commit()
+
+    async def list_recent_events(self, limit: int = 10) -> list[BlingConnectionEvent]:
+        result = await self.session.execute(
+            select(BlingConnectionEvent)
+            .order_by(BlingConnectionEvent.created_at.desc(), BlingConnectionEvent.id)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def last_event_at(self, event: BlingConnectionEventEnum) -> Optional[datetime]:
+        result = await self.session.execute(
+            select(func.max(BlingConnectionEvent.created_at)).where(
+                BlingConnectionEvent.event == event
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def save(self, connection: BlingConnection) -> BlingConnection:
         self.session.add(connection)

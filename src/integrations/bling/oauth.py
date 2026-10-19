@@ -3,7 +3,7 @@
 Nenhuma mensagem de erro ou log contém código, token ou segredo.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlencode
 
@@ -11,6 +11,7 @@ import httpx
 
 from src.core.config import settings
 from src.integrations.bling.errors import (
+    BlingError,
     BlingRateLimitedError,
     BlingRejectedError,
     BlingUnavailableError,
@@ -23,8 +24,8 @@ COMPANY_PATH = "/empresas/me/dados-basicos"
 
 @dataclass(frozen=True)
 class TokenSet:
-    access_token: str
-    refresh_token: str
+    access_token: str = field(repr=False)
+    refresh_token: str = field(repr=False)
     expires_in: int
 
 
@@ -41,7 +42,7 @@ def build_authorize_url(state: str) -> str:
     return f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/authorize?{query}"
 
 
-def _error_details(response: httpx.Response) -> tuple[str | None, str]:
+def parse_error_details(response: httpx.Response) -> tuple[str | None, str]:
     """Extrai tipo/mensagem do corpo de erro, sem repassar nada além desses campos."""
     try:
         body = response.json()
@@ -65,7 +66,7 @@ def _raise_for_status(response: httpx.Response) -> None:
         raise BlingRateLimitedError()
     if status >= 500:
         raise BlingUnavailableError()
-    error_type, message = _error_details(response)
+    error_type, message = parse_error_details(response)
     raise BlingRejectedError(status, error_type, message)
 
 
@@ -79,24 +80,51 @@ async def _send(method: str, url: str, **kwargs: Any) -> httpx.Response:
     return response
 
 
-async def exchange_code(code: str) -> TokenSet:
-    """Troca o código de autorização por tokens (Basic auth + form-urlencoded)."""
+async def _token_request(data: dict[str, str], fallback_refresh: str | None = None) -> TokenSet:
     response = await _send(
         "POST",
         f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/token",
         auth=(settings.BLING_CLIENT_ID, settings.BLING_CLIENT_SECRET),
         headers={"Accept": "application/json"},
-        data={"grant_type": "authorization_code", "code": code},
+        data=data,
     )
     try:
         body = response.json()
+        # Refresh rotativo: usa o novo se vier; senão mantém o anterior.
+        refresh = body.get("refresh_token") or fallback_refresh
         return TokenSet(
             access_token=str(body["access_token"]),
-            refresh_token=str(body["refresh_token"]),
+            refresh_token=str(refresh),
             expires_in=int(body["expires_in"]),
         )
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, AttributeError):
         raise BlingUnavailableError("Resposta de token do Bling inválida.") from None
+
+
+async def exchange_code(code: str) -> TokenSet:
+    """Troca o código de autorização por tokens (Basic auth + form-urlencoded)."""
+    return await _token_request({"grant_type": "authorization_code", "code": code})
+
+
+async def refresh_tokens(refresh_token: str) -> TokenSet:
+    """Renova o access token. 400/401 chegam como ``BlingRejectedError`` (definitivo)."""
+    return await _token_request(
+        {"grant_type": "refresh_token", "refresh_token": refresh_token},
+        fallback_refresh=refresh_token,
+    )
+
+
+async def revoke_token(token: str) -> None:
+    """Revoga no Bling (melhor esforço): nunca levanta."""
+    try:
+        await _send(
+            "POST",
+            f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/revoke",
+            auth=(settings.BLING_CLIENT_ID, settings.BLING_CLIENT_SECRET),
+            data={"token": token},
+        )
+    except BlingError:
+        pass
 
 
 async def fetch_company(access_token: str) -> CompanyInfo:

@@ -9,9 +9,11 @@ from src.core.db import get_db
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.integrations.bling_connection_repository import BlingConnectionRepository
+from src.schemas.integrations.bling_schema import BlingStatusResponse
 from src.schemas.response_schema import BaseResponse
 from src.services.integrations.bling_connection_service import (
     BlingAlreadyConnectedError,
+    BlingAlreadyDisconnectedError,
     BlingConnectionService,
     BlingNotConfiguredError,
 )
@@ -59,3 +61,25 @@ async def bling_callback(
     except BlingNotConfiguredError:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED_DETAIL)
     return RedirectResponse(service.result_url(result), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/status", response_model=BaseResponse[BlingStatusResponse])
+async def bling_status(
+    current_user: User = Depends(require_role(["admin"])),
+    service: BlingConnectionService = Depends(get_bling_connection_service),
+):
+    """Estado da conexão (sem tokens), com os 10 eventos mais recentes."""
+    return BaseResponse(status="success", data=await service.get_status())
+
+
+@router.post("/disconnect", response_model=BaseResponse[BlingStatusResponse])
+async def disconnect_bling(
+    current_user: User = Depends(require_role(["admin"])),
+    service: BlingConnectionService = Depends(get_bling_connection_service),
+):
+    """Revoga no Bling (melhor esforço), apaga os tokens e mantém a empresa vinculada."""
+    try:
+        data = await service.disconnect(current_user.id)
+    except BlingAlreadyDisconnectedError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return BaseResponse(status="success", data=data)
