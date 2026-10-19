@@ -12,10 +12,12 @@ import argparse
 import sys
 
 # Um PR com migrations só pode tocar nestes caminhos além de migrations/.
-# Testes e docs não mudam o comportamento em produção; src/, pyproject.toml,
-# uv.lock, vercel.json, workflows etc. mudam, então não entram na lista.
+# Testes e docs não mudam o comportamento em produção. src/models/ é permitido
+# porque o `alembic check` exige os models correspondentes no mesmo PR da migration
+# (constituição 1.0.1). Qualquer outro src/, pyproject.toml, uv.lock, vercel.json,
+# workflows etc. mudam o comportamento, então não entram na lista.
 MIGRATION_PREFIX = "migrations/"
-ALLOWED_WITH_MIGRATIONS = ("migrations/", "tests/", "docs/", "reports/")
+ALLOWED_WITH_MIGRATIONS = ("migrations/", "src/models/", "tests/", "docs/", "reports/")
 ALLOWED_FILES = ("README.md", "AGENTS.md", "CHANGELOG.md")
 # PR só com estes caminhos não depende do estado do banco (docs puros).
 NON_CODE_PREFIXES = ("docs/", "reports/")
@@ -41,11 +43,11 @@ def decide(files: list[str], heads: list[str], deployed: str | None) -> tuple[bo
         if extra:
             shown = ", ".join(extra[:10])
             return False, (
-                "PR com migrations deve conter SOMENTE migrations (testes e docs são "
+                "PR com migrations deve conter SOMENTE migrations e src/models/ (testes e docs são "
                 f"tolerados). Arquivos fora da regra: {shown}. Separe em dois PRs: "
                 "1) migrations; 2) merge, rode 'Migrate production'; 3) PR do código."
             )
-        return True, "PR somente de migrations: liberado. Após o merge, rode 'Migrate production'."
+        return True, "PR somente de migrations (e models): liberado. Após o merge, rode 'Migrate production'."
 
     if all(is_non_code(f) for f in files):
         return True, "PR sem código nem migrations (somente docs): liberado sem comparar revisão."

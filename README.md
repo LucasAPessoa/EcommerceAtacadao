@@ -188,8 +188,10 @@ Migrations de produção: apenas via `migrate-production.yml` (manual, environme
 
 Ordem obrigatória: PR só de migrations -> merge -> rodar `Migrate production` -> PR do código.
 O workflow registra a revisão aplicada como Deployment `database-production`; o check
-`Migration gate` (PRs) falha se o PR misturar migrations com código (`src/`, deps, workflows),
-ou se o head do Alembic do branch diferir da última revisão registrada. Não acessa o banco.
+`Migration gate` (PRs) falha se o PR misturar migrations com código (`src/` fora de `src/models/`, deps,
+workflows). Exceção: `src/models/**` é permitido junto com `migrations/`, pois o
+`alembic check` do CI exige os models da migration no mesmo PR (migration + models).
+PR só com `src/models/` (sem migration) conta como código. O check também falha se o head do Alembic do branch diferir da última revisão registrada. Não acessa o banco.
 PR só com `docs/`, `reports/`, `README.md`, `AGENTS.md` ou `CHANGELOG.md` passa sem comparar
 revisão. Workflows/CI, `tests/` isolados e qualquer outro arquivo contam como código.
 Bootstrap (uma vez, após o merge desta mudança): rode `Migrate production` na `main`
