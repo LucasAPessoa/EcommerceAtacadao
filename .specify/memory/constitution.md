@@ -48,8 +48,9 @@ fica registrado na spec ou em issue, não implementado "por precaução".
 - Frontend: repositório separado `front_atacadao` (React + Vite + TypeScript 7,
   Biome).
 - Contrato HTTP: a API decide primeiro; o front implementa depois.
-- Migrações aditivas vão em PR próprio; `Migrate production` roda antes do PR de
-  código (o `Migration gate` bloqueia o contrário).
+- Migrações aditivas vão em PR próprio, contendo apenas a migração e os models
+  correspondentes (`src/models/`, exigidos pelo `alembic check`); `Migrate
+  production` roda antes do PR de código (o `Migration gate` bloqueia o contrário).
 
 ## Fluxo de desenvolvimento
 
@@ -73,4 +74,4 @@ ser resolvido na spec ou justificado no plano (seção de complexidade). Emendas
 são feitas por PR, com versão semântica: MAJOR remove ou redefine princípio,
 MINOR adiciona princípio ou seção, PATCH esclarece texto.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-18 | **Last Amended**: 2026-10-18
+**Version**: 1.0.1 | **Ratified**: 2026-10-18 | **Last Amended**: 2026-10-19
