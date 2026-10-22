@@ -7,7 +7,7 @@ texto cifrado, o texto claro ou a chave.
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from src.core.config import settings
+from src.core.client_config import get_client_config
 
 CURRENT_KEY_VERSION = 1
 
@@ -17,7 +17,11 @@ class CryptoError(Exception):
 
 
 def _fernet(key: str | None) -> Fernet:
-    raw = settings.BLING_TOKEN_ENCRYPTION_KEY if key is None else key
+    if key is None:
+        bling = get_client_config().bling
+        raw = bling.token_encryption_key.get_secret_value() if bling else ""
+    else:
+        raw = key
     if not raw:
         raise CryptoError("Chave de criptografia não configurada.")
     try:

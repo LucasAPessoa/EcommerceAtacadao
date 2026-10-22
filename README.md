@@ -59,7 +59,7 @@ O Checkout Pro exige estas URLs públicas HTTPS:
 
 ```env
 MERCADO_PAGO_NOTIFICATION_URL=https://api.exemplo.com/api/v1/sales/checkout/mercado-pago/webhook
-MERCADO_PAGO_FRONTEND_BASE_URL=https://loja.exemplo.com
+FRONT_URL=https://loja.exemplo.com  # aceita também MERCADO_PAGO_FRONTEND_BASE_URL
 ```
 
 ## Rate limiting distribuído

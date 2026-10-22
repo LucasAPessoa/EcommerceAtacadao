@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from typing import Any
 
 import pytest
 
@@ -22,10 +23,10 @@ async def test_bling_check_failure_does_not_break_maintenance(
     assert "segredo" not in caplog.text
 
 
-async def test_skips_silently_when_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_skips_silently_when_not_configured(client_config_override: Any) -> None:
     from src.services.integrations import bling_connection_service as svc
 
-    monkeypatch.setattr(svc.settings, "BLING_CLIENT_ID", "")
+    client_config_override(bling=None)
 
     def factory():
         raise AssertionError("não deve abrir sessão")

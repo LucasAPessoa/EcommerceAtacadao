@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.client_config import get_client_config
 from src.core.config import settings
 from src.models.catalog import ProductVariant
 from src.models.enums import DiscountTypeEnum, PaymentMethodEnum
@@ -192,7 +193,7 @@ class CheckoutService:
             for line in lines
         ]
         quotes = await self.shipping_service.calculate_quotes_for_products(
-            origin_zip_code=settings.STORE_ORIGIN_ZIP_CODE,
+            origin_zip_code=get_client_config().origin_zip_code,
             destination_zip_code=address.zip_code,
             products=products,
         )

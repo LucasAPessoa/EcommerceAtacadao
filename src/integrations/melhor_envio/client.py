@@ -4,6 +4,7 @@ from typing import List
 import httpx
 from pydantic import ValidationError
 
+from src.core.client_config import get_client_config
 from src.core.config import settings
 from src.integrations.melhor_envio.schemas import MelhorEnvioProductItem, MelhorEnvioQuote
 
@@ -37,9 +38,10 @@ class MelhorEnvioClient:
     CALCULATE_PATH = "/api/v2/me/shipment/calculate"
 
     def __init__(self) -> None:
+        credentials = get_client_config().melhor_envio
         self.base_url = settings.MELHOR_ENVIO_BASE_URL
-        self.token = settings.MELHOR_ENVIO_TOKEN
-        self.user_agent = settings.MELHOR_ENVIO_USER_AGENT
+        self.token = credentials.token.get_secret_value()
+        self.user_agent = credentials.user_agent
 
     def _validate_config(self) -> None:
         """Impede chamadas sem revelar nomes de variáveis ou credenciais ao cliente."""

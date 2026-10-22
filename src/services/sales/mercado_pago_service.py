@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from src.core.client_config import get_client_config
 from src.core.config import settings
 from src.integrations.mercado_pago.client import MercadoPagoClient, MercadoPagoError
 from src.models.enums import (
@@ -85,7 +86,7 @@ class MercadoPagoCheckoutService:
         reservation_expires_at: datetime | None = None,
     ) -> dict[str, Any]:
         """Monta uma Order do provedor apenas com o snapshot persistido localmente."""
-        return_base_url = settings.MERCADO_PAGO_FRONTEND_BASE_URL.rstrip("/")
+        return_base_url = get_client_config().front_url.rstrip("/")
         order_id = str(order.id)
 
         def return_url(payment_status: str) -> str:
@@ -223,7 +224,8 @@ class MercadoPagoCheckoutService:
     def verify_webhook_signature(
         payment_id: str, signature: str | None, request_id: str | None
     ) -> None:
-        if not signature or not request_id or not settings.MERCADO_PAGO_WEBHOOK_SECRET:
+        mercado_pago = get_client_config().mercado_pago
+        if not signature or not request_id or mercado_pago is None:
             raise MercadoPagoWebhookError("Webhook não autorizado.")
         values = dict(part.split("=", 1) for part in signature.split(",") if "=" in part)
         timestamp, received = values.get("ts"), values.get("v1")
@@ -231,7 +233,9 @@ class MercadoPagoCheckoutService:
             raise MercadoPagoWebhookError("Webhook não autorizado.")
         manifest = f"id:{payment_id};request-id:{request_id};ts:{timestamp};"
         expected = hmac.new(
-            settings.MERCADO_PAGO_WEBHOOK_SECRET.encode(), manifest.encode(), hashlib.sha256
+            mercado_pago.webhook_secret.get_secret_value().encode(),
+            manifest.encode(),
+            hashlib.sha256,
         ).hexdigest()
         if not hmac.compare_digest(expected, received):
             raise MercadoPagoWebhookError("Webhook não autorizado.")

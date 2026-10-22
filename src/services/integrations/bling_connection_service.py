@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core import crypto
-from src.core.config import settings
+from src.core.client_config import get_client_config
 from src.integrations.bling import oauth
 from src.integrations.bling.errors import (
     BlingError,
@@ -66,13 +66,20 @@ class BlingConnectionService:
 
     @staticmethod
     def _ensure_configured() -> None:
-        if not settings.bling_configured:
+        if not get_client_config().bling_configured:
             raise BlingNotConfiguredError("Integração com o Bling não configurada.")
+
+    @staticmethod
+    def _signing_key() -> str:
+        bling = get_client_config().bling
+        if bling is None:
+            raise BlingNotConfiguredError("Integração com o Bling não configurada.")
+        return bling.state_signing_key.get_secret_value()
 
     @staticmethod
     def result_url(result: str) -> str:
         query = urlencode({"resultado": result})
-        return f"{settings.FRONT_URL.rstrip('/')}{FRONT_RESULT_PATH}?{query}"
+        return f"{get_client_config().front_url.rstrip('/')}{FRONT_RESULT_PATH}?{query}"
 
     async def start_connect(self, admin_user_id: UUID) -> str:
         self._ensure_configured()
@@ -80,7 +87,7 @@ class BlingConnectionService:
         if connection and connection.status == BlingConnectionStatusEnum.CONNECTED:
             raise BlingAlreadyConnectedError("Já existe uma conexão ativa com o Bling.")
         state = create_state(
-            settings.TENANT_ID, settings.BLING_STATE_SIGNING_KEY, ATTEMPT_TTL_SECONDS
+            get_client_config().tenant_id, self._signing_key(), ATTEMPT_TTL_SECONDS
         )
         now = _utcnow()
         await self.repository.create_attempt(
@@ -105,9 +112,7 @@ class BlingConnectionService:
         if not state:
             return "invalido"
         try:
-            verify_state(
-                state, settings.BLING_STATE_SIGNING_KEY, expected_tenant=settings.TENANT_ID
-            )
+            verify_state(state, self._signing_key(), expected_tenant=get_client_config().tenant_id)
         except StateError as exc:
             logger.warning("bling_callback_invalid reason=state_%s", exc.reason)
             return "invalido"
@@ -363,7 +368,7 @@ async def run_connection_check(
     session_factory: Callable[[], AbstractAsyncContextManager[AsyncSession]],
 ) -> str:
     """Verificação periódica (R9). Devolve um resumo curto; nunca levanta erro do Bling."""
-    if not settings.bling_configured:
+    if not get_client_config().bling_configured:
         return "skipped_not_configured"
     from src.integrations.bling.client import BlingClient
 
