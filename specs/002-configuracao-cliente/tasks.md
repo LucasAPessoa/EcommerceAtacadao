@@ -77,7 +77,7 @@ Sem tarefas: projeto e dependências já existem (`pydantic[email]`, `pydantic-s
 
 - [x] T016 Atualizar `.env.example` com a seção "Cliente" espelhando `contracts/client-env.md` (valores fictícios) e o `README.md` se citar `STORE_ORIGIN_ZIP_CODE`/`PROJECT_NAME` — executor: atacadao-api
 - [x] T017 Verificação: `uv run pytest`, `uv run ruff check . && uv run ruff format --check .`, `uv run mypy src --explicit-package-bases`, `git diff --check` (env fictícias do roteiro) — executor: atacadao-tester; depois revisão do diff (FR-003, segredos, compatibilidade de produção) — executor: atacadao-reviewer
-- [ ] T018 Pré-merge: listar só os nomes das env de produção (`npx -y vercel@64.3.1 env ls production`) e confirmar que nenhum grupo (Mercado Pago, Bling, remetente) está parcial; depois do deploy, smoke verde — executor: orquestrador
+- [x] T018 Pré-merge: listar só os nomes das env de produção (`npx -y vercel@64.3.1 env ls production`) e confirmar que nenhum grupo (Mercado Pago, Bling, remetente) está parcial; depois do deploy, smoke verde — executor: orquestrador
 
 ---
 

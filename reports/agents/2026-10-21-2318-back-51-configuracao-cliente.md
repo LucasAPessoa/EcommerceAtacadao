@@ -22,6 +22,5 @@
 - 2ª rodada: **approved**.
 
 ## Pendências
-- T018 (pré-merge): validar **valores** das env de produção (TENANT_ID, https em FRONT_URL/NOTIFICATION_URL, CEP, grupos MP/Bling completos), não só nomes — exige autorização do usuário para `vercel env pull`.
-- Commit/push/PRs aguardam pedido do usuário (ordem: PR de docs da spec → PR de código).
+- PR #79 mergeado (`7806179`) antes do T018; CI do PR verde, Deploy smoke verde e produção (`dpl_GYsS…`, READY) responde `/health` 200, o que prova que os valores de produção passam na validação de inicialização. Nomes na Vercel (production e preview): Mercado Pago 2/2, obrigatórios 3/3, Bling 0/4, sem remetente — nenhum grupo parcial. Leitura de valores decifrados bloqueada pelo modo automático (não necessária).
 - Sem impacto no front. Próximo consumidor: back #57 (CI/CD por cliente).
