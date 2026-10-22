@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.core.config import settings
+from src.core.client_config import get_client_config
 from src.core.db import DbSession
 from src.integrations.melhor_envio.client import MelhorEnvioError
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
@@ -32,7 +32,7 @@ async def calculate_shipping(
     """
     try:
         data = await service.calculate_quotes(
-            origin_zip_code=settings.STORE_ORIGIN_ZIP_CODE,
+            origin_zip_code=get_client_config().origin_zip_code,
             destination_zip_code=request_in.destination_zip_code,
             items=request_in.items,
         )

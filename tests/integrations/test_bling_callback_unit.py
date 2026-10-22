@@ -2,12 +2,15 @@
 
 import logging
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from pydantic import SecretStr
 
 from src.core import crypto
+from src.core.client_config import BlingCredentials
 from src.integrations.bling import oauth
 from src.integrations.bling.state import create_state
 from src.models.enums import BlingConnectionStatusEnum
@@ -22,17 +25,20 @@ def test_token_set_repr_hides_tokens() -> None:
 
 
 async def test_crypto_error_in_callback_is_invalid_saves_nothing_and_does_not_leak(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    client_config_override: Any,
 ) -> None:
-    for name, value in {
-        "TENANT_ID": "t",
-        "FRONT_URL": "http://front.test",
-        "BLING_CLIENT_ID": "c",
-        "BLING_CLIENT_SECRET": "s",
-        "BLING_TOKEN_ENCRYPTION_KEY": "k",
-        "BLING_STATE_SIGNING_KEY": "signing",
-    }.items():
-        monkeypatch.setattr(svc.settings, name, value)
+    client_config_override(
+        tenant_id="t",
+        front_url="http://front.test",
+        bling=BlingCredentials(
+            client_id="c",
+            client_secret=SecretStr("s"),
+            token_encryption_key=SecretStr("k"),
+            state_signing_key=SecretStr("signing"),
+        ),
+    )
     tokens = oauth.TokenSet(access_token="acc-SECRET", refresh_token="ref-SECRET", expires_in=60)
     monkeypatch.setattr(oauth, "exchange_code", AsyncMock(return_value=tokens))
     monkeypatch.setattr(

@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from src.core.client_config import BlingCredentials, get_client_config
 from src.core.config import settings
 from src.integrations.bling.errors import (
     BlingError,
@@ -35,10 +36,20 @@ class CompanyInfo:
     name: str
 
 
+def _bling() -> BlingCredentials:
+    bling = get_client_config().bling
+    if bling is None:
+        raise BlingError("Integração com o Bling não configurada.")
+    return bling
+
+
+def _basic_auth() -> tuple[str, str]:
+    bling = _bling()
+    return bling.client_id, bling.client_secret.get_secret_value()
+
+
 def build_authorize_url(state: str) -> str:
-    query = urlencode(
-        {"response_type": "code", "client_id": settings.BLING_CLIENT_ID, "state": state}
-    )
+    query = urlencode({"response_type": "code", "client_id": _bling().client_id, "state": state})
     return f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/authorize?{query}"
 
 
@@ -84,7 +95,7 @@ async def _token_request(data: dict[str, str], fallback_refresh: str | None = No
     response = await _send(
         "POST",
         f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/token",
-        auth=(settings.BLING_CLIENT_ID, settings.BLING_CLIENT_SECRET),
+        auth=_basic_auth(),
         headers={"Accept": "application/json"},
         data=data,
     )
@@ -120,7 +131,7 @@ async def revoke_token(token: str) -> None:
         await _send(
             "POST",
             f"{settings.BLING_AUTH_BASE_URL.rstrip('/')}/oauth/revoke",
-            auth=(settings.BLING_CLIENT_ID, settings.BLING_CLIENT_SECRET),
+            auth=_basic_auth(),
             data={"token": token},
         )
     except BlingError:

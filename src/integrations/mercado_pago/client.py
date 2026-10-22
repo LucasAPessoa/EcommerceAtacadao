@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from src.core.client_config import get_client_config
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,12 +36,14 @@ class MercadoPagoClient:
         )
 
     def _validate_config(self) -> None:
-        access_token_configured = bool(settings.MERCADO_PAGO_ACCESS_TOKEN)
-        webhook_secret_configured = bool(settings.MERCADO_PAGO_WEBHOOK_SECRET)
+        config = get_client_config()
+        credentials = config.mercado_pago
+        access_token_configured = credentials is not None
+        webhook_secret_configured = credentials is not None
         notification_url_is_public = self._is_public_https_url(
-            settings.MERCADO_PAGO_NOTIFICATION_URL
+            credentials.notification_url if credentials else ""
         )
-        frontend_url_is_public = self._is_public_https_url(settings.MERCADO_PAGO_FRONTEND_BASE_URL)
+        frontend_url_is_public = self._is_public_https_url(config.front_url)
         if not all(
             (
                 access_token_configured,
@@ -76,8 +79,10 @@ class MercadoPagoClient:
         return value
 
     def _headers(self) -> dict[str, str]:
+        credentials = get_client_config().mercado_pago
+        access_token = credentials.access_token.get_secret_value() if credentials else ""
         return {
-            "Authorization": f"Bearer {settings.MERCADO_PAGO_ACCESS_TOKEN}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
 

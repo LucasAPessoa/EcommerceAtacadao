@@ -1,12 +1,14 @@
 import hashlib
 import hmac
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+from pydantic import SecretStr
 
-from src.core.config import settings
+from src.core.client_config import MercadoPagoCredentials
 from src.integrations.mercado_pago.client import MercadoPagoClient, MercadoPagoError
 from src.models.enums import (
     OrderStatusEnum,
@@ -31,10 +33,16 @@ def checkout_input() -> CheckoutConfirmSchema:
 
 @pytest.mark.asyncio
 async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
-    monkeypatch: pytest.MonkeyPatch,
+    client_config_override: Any,
 ) -> None:
-    monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
-    monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
+    client_config_override(
+        front_url="https://shop.example",
+        mercado_pago=MercadoPagoCredentials(
+            access_token=SecretStr("mp-token"),
+            webhook_secret=SecretStr("webhook-secret"),
+            notification_url="https://api.example/webhook",
+        ),
+    )
     order = SimpleNamespace(
         id=uuid4(),
         order_code="PED-TEST-0001",
@@ -99,10 +107,16 @@ async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
 
 @pytest.mark.asyncio
 async def test_preparing_checkout_retries_order_creation_with_same_key(
-    monkeypatch: pytest.MonkeyPatch,
+    client_config_override: Any,
 ) -> None:
-    monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
-    monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
+    client_config_override(
+        front_url="https://shop.example",
+        mercado_pago=MercadoPagoCredentials(
+            access_token=SecretStr("mp-token"),
+            webhook_secret=SecretStr("webhook-secret"),
+            notification_url="https://api.example/webhook",
+        ),
+    )
     order = SimpleNamespace(
         id=uuid4(),
         order_code="PED-1",
@@ -148,9 +162,16 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
 
 @pytest.mark.asyncio
 async def test_processed_accredited_order_confirms_reservations(
-    monkeypatch: pytest.MonkeyPatch,
+    client_config_override: Any,
 ) -> None:
-    monkeypatch.setattr(settings, "MERCADO_PAGO_WEBHOOK_SECRET", "webhook-secret")
+    client_config_override(
+        front_url="https://shop.example",
+        mercado_pago=MercadoPagoCredentials(
+            access_token=SecretStr("mp-token"),
+            webhook_secret=SecretStr("webhook-secret"),
+            notification_url="https://api.example/webhook",
+        ),
+    )
     order_id = uuid4()
     transaction = SimpleNamespace(
         gateway_payment_id=None,

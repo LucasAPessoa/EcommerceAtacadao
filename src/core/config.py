@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -34,7 +34,6 @@ def normalize_async_database_url(value: str) -> str:
 
 class Settings(BaseSettings):
     # Informações da API
-    PROJECT_NAME: str = "E-Commerce API"
     VERSION: str = "1.0.0"
 
     # Banco de Dados
@@ -49,28 +48,21 @@ class Settings(BaseSettings):
     DB_PGBOUNCER_COMPAT: bool = False
 
     # Segurança
-    SECRET_KEY: str
+    SECRET_KEY: str = Field(repr=False)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    REFRESH_SECRET_KEY: str
+    REFRESH_SECRET_KEY: str = Field(repr=False)
     STOCK_RESERVATION_MINUTES: int = 15
 
     # Integração de Frete (Melhor Envio) - https://docs.melhorenvio.com.br
-    MELHOR_ENVIO_TOKEN: str
     MELHOR_ENVIO_BASE_URL: str = "https://sandbox.melhorenvio.com.br"
-    MELHOR_ENVIO_USER_AGENT: str
-    STORE_ORIGIN_ZIP_CODE: str
-    MERCADO_PAGO_ACCESS_TOKEN: str = ""
-    MERCADO_PAGO_WEBHOOK_SECRET: str = ""
-    MERCADO_PAGO_NOTIFICATION_URL: str = ""
-    MERCADO_PAGO_FRONTEND_BASE_URL: str = ""
     MERCADO_PAGO_BASE_URL: str = "https://api.mercadopago.com"
     MERCADO_PAGO_ORDER_EXPIRATION_ENABLED: bool = True
     MERCADO_PAGO_CANCEL_RETRY_HOURS: int = 24
     MERCADO_PAGO_CANCEL_MAX_ATTEMPTS: int = 8
     MERCADO_PAGO_EXPIRATION_GRACE_SECONDS: int = 120
     # Vazio desabilita o endpoint interno de manutenção de pagamentos (404).
-    MAINTENANCE_JOB_TOKEN: str = ""
+    MAINTENANCE_JOB_TOKEN: str = Field(default="", repr=False)
     CORS_ALLOWED_ORIGINS: str = ""
     # Redis TCP (redis:// ou rediss://); aceita STORAGE_REDIS_URL (integração Vercel).
     # Tem precedência sobre o backend REST quando definido.
@@ -79,20 +71,49 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RATE_LIMIT_REDIS_URL", "STORAGE_REDIS_URL"),
     )
     RATE_LIMIT_REDIS_REST_URL: str = ""
-    RATE_LIMIT_REDIS_REST_TOKEN: str = ""
+    RATE_LIMIT_REDIS_REST_TOKEN: str = Field(default="", repr=False)
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
     RATE_LIMIT_CLIENT_IP_HEADER: str = ""
     RATE_LIMIT_FAILURE_COOLDOWN_SECONDS: float = 30.0
     MAX_REQUEST_BODY_BYTES: int = 1_048_576
 
-    # Integração Bling (opcional na inicialização: sem elas os endpoints respondem
-    # "não configurado"). Segredos ficam fora de repr/log.
+    # Dados do cliente (loja). São lidos só por src.core.client_config, que valida,
+    # agrega os erros e expõe o objeto imutável ClientConfig. Aqui ficam planos e
+    # sem validação de formato: obrigatoriedade e regras estão no ClientConfig.
+    # Segredos são SecretStr (fora de repr/str/dump).
+    # Contrato: specs/002-configuracao-cliente/contracts/client-env.md
     TENANT_ID: str = ""
+    STORE_NAME: str = ""
+    # Legado: nomes antigos; build_client_config usa quando o novo está vazio.
+    PROJECT_NAME: str = ""
     FRONT_URL: str = ""
+    MERCADO_PAGO_FRONTEND_BASE_URL: str = ""
+    STORE_ORIGIN_ZIP_CODE: str = ""
+    STORE_SENDER_LEGAL_NAME: str = ""
+    STORE_SENDER_CNPJ: str = ""
+    STORE_SENDER_STATE_REGISTRATION: str = ""
+    STORE_SENDER_STREET: str = ""
+    STORE_SENDER_NUMBER: str = ""
+    STORE_SENDER_COMPLEMENT: str = ""
+    STORE_SENDER_DISTRICT: str = ""
+    STORE_SENDER_CITY: str = ""
+    STORE_SENDER_STATE: str = ""
+    STORE_SENDER_PHONE: str = ""
+    STORE_SENDER_EMAIL: str = ""
+    STORE_POSTING_MODE: str = ""
+    STORE_POSTING_AGENCY_ID: str = ""
+    STORE_SHIPPING_MARGIN_PERCENT: str = ""
+    STORE_HANDLING_DAYS: str = ""
+    MELHOR_ENVIO_TOKEN: SecretStr = Field(default=SecretStr(""), repr=False)
+    MELHOR_ENVIO_USER_AGENT: str = ""
+    MERCADO_PAGO_ACCESS_TOKEN: SecretStr = Field(default=SecretStr(""), repr=False)
+    MERCADO_PAGO_WEBHOOK_SECRET: SecretStr = Field(default=SecretStr(""), repr=False)
+    MERCADO_PAGO_NOTIFICATION_URL: str = ""
     BLING_CLIENT_ID: str = ""
-    BLING_CLIENT_SECRET: str = Field(default="", repr=False)
-    BLING_TOKEN_ENCRYPTION_KEY: str = Field(default="", repr=False)
-    BLING_STATE_SIGNING_KEY: str = Field(default="", repr=False)
+    BLING_CLIENT_SECRET: SecretStr = Field(default=SecretStr(""), repr=False)
+    BLING_TOKEN_ENCRYPTION_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
+    BLING_STATE_SIGNING_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
+    BLING_ORDER_STATUS_MAP: str = ""
     BLING_AUTH_BASE_URL: str = "https://www.bling.com.br/Api/v3"
     BLING_API_BASE_URL: str = "https://api.bling.com.br/Api/v3"
 
@@ -111,26 +132,13 @@ class Settings(BaseSettings):
             if origin.strip() and origin.strip() != "*"
         ]
 
-    @property
-    def bling_configured(self) -> bool:
-        """True quando todas as variáveis necessárias à conexão Bling estão presentes."""
-        return all(
-            (
-                self.TENANT_ID,
-                self.FRONT_URL,
-                self.BLING_CLIENT_ID,
-                self.BLING_CLIENT_SECRET,
-                self.BLING_TOKEN_ENCRYPTION_KEY,
-                self.BLING_STATE_SIGNING_KEY,
-            )
-        )
-
     # Configuração do Pydantic para ler o arquivo .env
     model_config = SettingsConfigDict(
         env_file=str(ROOT_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
 

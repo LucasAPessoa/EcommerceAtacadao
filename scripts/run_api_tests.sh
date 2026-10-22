@@ -51,7 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Bling simulado (nunca o Bling real) + variáveis fictícias da integração.
-export TENANT_ID="test-tenant" FRONT_URL="http://front.test"
+export TENANT_ID="test-tenant" FRONT_URL="https://front.test"
 export BLING_CLIENT_ID="test-client-id" BLING_CLIENT_SECRET="test-client-secret"
 export BLING_STATE_SIGNING_KEY="test-state-signing-key-not-secret"
 BLING_TOKEN_ENCRYPTION_KEY="$(python3 -c 'import base64; print(base64.urlsafe_b64encode(b"0123456789abcdef0123456789abcdef").decode())')"

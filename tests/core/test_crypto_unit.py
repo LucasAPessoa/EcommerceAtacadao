@@ -1,7 +1,10 @@
+from typing import Any
+
 import pytest
 from cryptography.fernet import Fernet
+from pydantic import SecretStr
 
-from src.core import crypto
+from src.core.client_config import BlingCredentials
 from src.core.crypto import CryptoError, decrypt, encrypt
 
 KEY = Fernet.generate_key().decode()
@@ -42,16 +45,23 @@ def test_malformed_or_unknown_version(raw: bytes) -> None:
         decrypt(raw, key=KEY)
 
 
-def test_missing_or_invalid_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(crypto.settings, "BLING_TOKEN_ENCRYPTION_KEY", "")
+def test_missing_or_invalid_key(client_config_override: Any) -> None:
+    client_config_override(bling=None)
     with pytest.raises(CryptoError, match="não configurada"):
         encrypt("x")
     with pytest.raises(CryptoError, match="inválida"):
         encrypt("x", key="nao-e-uma-chave")
 
 
-def test_uses_settings_key_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(crypto.settings, "BLING_TOKEN_ENCRYPTION_KEY", KEY)
+def test_uses_configured_key_by_default(client_config_override: Any) -> None:
+    client_config_override(
+        bling=BlingCredentials(
+            client_id="c",
+            client_secret=SecretStr("s"),
+            token_encryption_key=SecretStr(KEY),
+            state_signing_key=SecretStr("x" * 32),
+        )
+    )
 
     data, _ = encrypt("x")
 
