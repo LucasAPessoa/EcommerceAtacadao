@@ -1,8 +1,5 @@
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.repositories.catalog.product_review_repository import ProductReviewRepository
 from src.schemas.catalog.product_review_schema import (
     ProductReviewCreateSchema,
@@ -12,7 +9,9 @@ from src.schemas.catalog.product_review_schema import (
 from src.services.catalog.product_review_service import ProductReviewService
 
 
-def get_product_review_service(session: AsyncSession = Depends(get_db)) -> ProductReviewService:
+def get_product_review_service(
+    session: DbSession,
+) -> ProductReviewService:
     repository = ProductReviewRepository(session)
     return ProductReviewService(repository)
 

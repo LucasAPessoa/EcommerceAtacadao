@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import get_current_active_user
 from src.models.identity import User
 from src.repositories.identity.refresh_token_repository import RefreshTokenRepository
@@ -22,11 +21,15 @@ from src.services.identity.auth_service import (
 router = APIRouter(tags=["auth"])
 
 
-def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
+def get_user_repository(
+    session: DbSession,
+) -> UserRepository:
     return UserRepository(session)
 
 
-def get_refresh_token_repository(session: AsyncSession = Depends(get_db)) -> RefreshTokenRepository:
+def get_refresh_token_repository(
+    session: DbSession,
+) -> RefreshTokenRepository:
     return RefreshTokenRepository(session)
 
 

@@ -1,9 +1,8 @@
 from typing import List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.identity.user_repository import UserRepository
@@ -14,7 +13,9 @@ from src.services.identity.user_service import UserService
 router = APIRouter(tags=["users"])
 
 
-def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
+def get_user_repository(
+    session: DbSession,
+) -> UserRepository:
     return UserRepository(session)
 
 

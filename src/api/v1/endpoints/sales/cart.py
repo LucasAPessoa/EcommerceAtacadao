@@ -1,9 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
@@ -19,7 +18,7 @@ from src.services.sales.cart_service import CartService
 router = APIRouter(prefix="/cart", tags=["Cart"])
 
 
-def get_cart_service(session: AsyncSession = Depends(get_db)) -> CartService:
+def get_cart_service(session: DbSession) -> CartService:
     return CartService(
         repository=CartRepository(session),
         variant_repository=ProductVariantRepository(session),

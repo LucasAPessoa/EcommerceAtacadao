@@ -1,14 +1,13 @@
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.models.identity import User
 from src.repositories.identity.user_repository import UserRepository
 
@@ -70,8 +69,8 @@ security = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    session: AsyncSession = Depends(get_db),
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    session: DbSession,
 ) -> User:
     """
     Get the current authenticated user from the JWT token.
@@ -132,8 +131,8 @@ _optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_optional_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_security),
-    session: AsyncSession = Depends(get_db),
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(_optional_security)],
+    session: DbSession,
 ) -> Optional[User]:
     """
     Usuário autenticado ativo, ou None (anônimo) se o token faltar/for inválido.
@@ -148,7 +147,9 @@ async def get_optional_current_user(
     return user if user.is_active else None
 
 
-def get_user_repository(session: AsyncSession = Depends(get_db)) -> UserRepository:
+def get_user_repository(
+    session: DbSession,
+) -> UserRepository:
     return UserRepository(session)
 
 

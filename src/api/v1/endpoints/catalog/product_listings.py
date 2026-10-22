@@ -1,8 +1,5 @@
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.repositories.catalog.product_listing_repository import ProductListingRepository
 from src.schemas.catalog.product_listing_schema import (
     ProductListingCreateSchema,
@@ -12,7 +9,9 @@ from src.schemas.catalog.product_listing_schema import (
 from src.services.catalog.product_listing_service import ProductListingService
 
 
-def get_product_listing_service(session: AsyncSession = Depends(get_db)) -> ProductListingService:
+def get_product_listing_service(
+    session: DbSession,
+) -> ProductListingService:
     repository = ProductListingRepository(session)
     return ProductListingService(repository)
 

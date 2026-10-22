@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
-from src.core.db import get_db
+from src.core.db import DbSession
 from src.integrations.melhor_envio.client import MelhorEnvioError
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
 from src.schemas.operations.shipping_schema import (
@@ -15,7 +14,9 @@ from src.services.operations.shipping_service import ShippingQuoteUnavailableErr
 router = APIRouter(prefix="/shipping", tags=["Shipping"])
 
 
-def get_shipping_service(session: AsyncSession = Depends(get_db)) -> ShippingService:
+def get_shipping_service(
+    session: DbSession,
+) -> ShippingService:
     return ShippingService(variant_repository=ProductVariantRepository(session))
 
 

@@ -86,7 +86,7 @@ class BlingConnectionService:
         await self.repository.create_attempt(
             hash_state(state), admin_user_id, now + timedelta(seconds=ATTEMPT_TTL_SECONDS)
         )
-        # Commit antes de responder: o callback pode chegar antes do commit tardio do get_db.
+        # Commit explícito: o callback do Bling pode chegar logo após a resposta.
         await self.repository.commit()
         return oauth.build_authorize_url(state)
 

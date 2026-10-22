@@ -1,6 +1,7 @@
-from typing import Any, AsyncGenerator
+from typing import Annotated, Any, AsyncGenerator
 from uuid import uuid4
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -66,6 +67,9 @@ AsyncSessionLocal = async_sessionmaker(
 # 3. Injeção de Dependência para as Rotas do FastAPI
 # Essa função vai fornecer uma sessão limpa para cada request
 # e fechar automaticamente quando a requisição do usuário terminar.
+# IMPORTANTE: no FastAPI >= 0.118 o código após o `yield` roda DEPOIS do envio
+# da resposta. Para o commit acontecer ANTES dela, use sempre `DbSession`
+# (nunca `Depends(get_db)` direto; guardado por tests/core/test_db_scope_unit.py).
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
@@ -81,3 +85,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         finally:
             # Garante que a conexão volta pro pool mesmo se der erro (Exception)
             await session.close()
+
+
+# Sessão por requisição com scope="function": o teardown (commit/rollback/close)
+# roda logo após o endpoint, ANTES de a resposta ser enviada. Assim o cliente nunca
+# lê dados anteriores ao commit da própria escrita.
+DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]
