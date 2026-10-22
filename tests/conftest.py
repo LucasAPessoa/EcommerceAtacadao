@@ -192,3 +192,20 @@ def make_user_payload(
         "corporate_name": corporate_name,
         "user_type": user_type,
     }
+
+
+@pytest.fixture
+def client_config_override(monkeypatch: pytest.MonkeyPatch):
+    """Troca o ClientConfig devolvido por ``get_client_config()`` durante o teste.
+
+    ``client_config_override(**campos)`` parte da configuração atual (env de teste) e
+    substitui os campos informados; o monkeypatch restaura o original ao final.
+    """
+    from src.core import client_config as module
+
+    def apply(**fields: Any) -> module.ClientConfig:
+        config = module.get_client_config().model_copy(update=fields)
+        monkeypatch.setattr(module, "_client_config", config)
+        return config
+
+    return apply

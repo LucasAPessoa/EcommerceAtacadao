@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -12,8 +13,8 @@ NOW = datetime(2026, 1, 1, 12, 0, 0)
 
 
 @pytest.fixture(autouse=True)
-def _urls(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
+def _urls(monkeypatch: pytest.MonkeyPatch, client_config_override: Any) -> None:
+    client_config_override(front_url="https://shop.example")
     monkeypatch.setattr(settings, "STOCK_RESERVATION_MINUTES", 15)
 
 

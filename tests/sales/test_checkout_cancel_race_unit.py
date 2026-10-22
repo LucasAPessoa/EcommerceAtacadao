@@ -1,10 +1,12 @@
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+from pydantic import SecretStr
 
-from src.core.config import settings
+from src.core.client_config import MercadoPagoCredentials
 from src.models.enums import OrderStatusEnum, TransactionStatusEnum
 from src.schemas.sales.checkout_schema import CheckoutConfirmSchema
 from src.services.sales.mercado_pago_service import MercadoPagoCheckoutService
@@ -78,9 +80,15 @@ def _start_setup(canceled_meanwhile: bool):
 
 
 @pytest.fixture(autouse=True)
-def _settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "MERCADO_PAGO_FRONTEND_BASE_URL", "https://shop.example")
-    monkeypatch.setattr(settings, "MERCADO_PAGO_NOTIFICATION_URL", "https://api.example/webhook")
+def _settings(client_config_override: Any) -> None:
+    client_config_override(
+        front_url="https://shop.example",
+        mercado_pago=MercadoPagoCredentials(
+            access_token=SecretStr("mp-token"),
+            webhook_secret=SecretStr("webhook-secret"),
+            notification_url="https://api.example/webhook",
+        ),
+    )
 
 
 @pytest.mark.asyncio

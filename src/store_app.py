@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from src.api.v1.endpoints.router import api_router as router
+from src.core.client_config import get_client_config
 from src.core.config import settings
 from src.core.rate_limit import (
     BaseRedisRateLimiter,
@@ -32,9 +33,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _app.state.rate_limiter.aclose()
 
 
+# Falha cedo (com todos os problemas numa mensagem) se a configuração do cliente é inválida.
+client_config = get_client_config()
+
 app = FastAPI(
     lifespan=lifespan,
-    title=settings.PROJECT_NAME,
+    title=client_config.brand.name,
     version=settings.VERSION,
     description="API Orquestradora para E-commerce e Integrações",
     docs_url="/api/docs",  # Move o Swagger para uma rota mais limpa
@@ -110,7 +114,11 @@ async def global_error_handler(request: Request, exc: IntegrityError):
 @app.get("/health", tags=["System"])
 async def health_check():
     """Retorna o status vital da API."""
-    return {"status": "online", "project": settings.PROJECT_NAME, "version": settings.VERSION}
+    return {
+        "status": "online",
+        "project": get_client_config().brand.name,
+        "version": settings.VERSION,
+    }
 
 
 # from src.api.v1.router import api_router
