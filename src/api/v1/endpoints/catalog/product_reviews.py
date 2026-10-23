@@ -38,4 +38,5 @@ router = build_crud_router(
     write_roles=["admin"],
     create_as_author=True,
     hide_unapproved_from_public=True,
+    list_filters={"product_id": "Filtra pelo produto (UUID)."},
 )

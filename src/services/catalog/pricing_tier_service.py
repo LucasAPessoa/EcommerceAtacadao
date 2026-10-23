@@ -25,8 +25,12 @@ class PricingTierService:
         data = tier_in.model_dump(exclude_unset=True)
         return await self.repository.create(data)
 
-    async def list_tiers(self) -> List[PricingTierResponseSchema]:
-        return await self.repository.get_all()
+    async def list_tiers(
+        self, product_id: Optional[UUID] = None
+    ) -> List[PricingTierResponseSchema]:
+        if product_id is None:
+            return await self.repository.get_all()
+        return await self.repository.get_by_product(product_id)
 
     async def get_tier_by_id(self, tier_id: UUID) -> Optional[PricingTierResponseSchema]:
         return await self.repository.get_by_id(tier_id)

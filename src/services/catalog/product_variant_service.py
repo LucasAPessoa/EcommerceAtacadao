@@ -12,8 +12,12 @@ class ProductVariantService:
     def __init__(self, repository: ProductVariantRepository):
         self.repository = repository
 
-    async def list_variants(self) -> List[ProductVariantResponseSchema]:
-        return await self.repository.get_all()
+    async def list_variants(
+        self, product_id: Optional[UUID] = None
+    ) -> List[ProductVariantResponseSchema]:
+        if product_id is None:
+            return await self.repository.get_all()
+        return await self.repository.get_by_product(product_id)
 
     async def get_variant_by_id(self, variant_id: UUID) -> Optional[ProductVariantResponseSchema]:
         return await self.repository.get_by_id(variant_id)

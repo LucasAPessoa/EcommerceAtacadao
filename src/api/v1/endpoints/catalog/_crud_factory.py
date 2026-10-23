@@ -19,10 +19,11 @@ os nomes dos métodos do service (o "verbs"), porque os services não têm uma
 nomenclatura 100% padronizada (create_tier, create_attribute, create_image...).
 """
 
+import inspect
 from typing import Callable, List, Optional, Type
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.core.sec import get_current_active_user, get_optional_current_user, require_role
@@ -45,6 +46,7 @@ def build_crud_router(
     create_as_author: bool = False,
     hide_unapproved_from_public: bool = False,
     read_only: bool = False,
+    list_filters: Optional[dict] = None,
 ) -> APIRouter:
     """
     verbs: dict com os nomes reais dos métodos do service, ex.:
@@ -67,6 +69,10 @@ def build_crud_router(
     read_only: se True, não registra POST/PATCH/DELETE (só GETs); o roteamento
         responde 405 a essas operações. Nesse caso create_schema, update_schema
         e os verbs "create"/"update"/"delete" são dispensáveis.
+
+    list_filters: dict[nome do parâmetro de query -> descrição]. Cada um é um
+        UUID opcional (inválido -> 422) repassado como kwarg ao método "list" do
+        service, só quando informado; sem filtro a chamada é a de antes.
     """
     router = APIRouter(prefix=prefix, tags=tags)  # type: ignore[arg-type]  # list[str] aceito pelo FastAPI (tags: list[str | Enum])
 
@@ -99,6 +105,21 @@ def build_crud_router(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
             return BaseResponse(status="success", data=data)
 
+    filter_params = [
+        inspect.Parameter(
+            name,
+            inspect.Parameter.KEYWORD_ONLY,
+            default=Query(None, description=description),
+            annotation=Optional[UUID],
+        )
+        for name, description in (list_filters or {}).items()
+    ]
+
+    async def _list_filters(**kwargs) -> dict:
+        return {k: v for k, v in kwargs.items() if v is not None}
+
+    _list_filters.__signature__ = inspect.Signature(filter_params)  # type: ignore[attr-defined]  # assinatura dinâmica para o FastAPI gerar os query params
+
     async def _no_viewer():
         return None
 
@@ -119,9 +140,10 @@ def build_crud_router(
             limit: int = 100,
             service=Depends(service_dependency),
             viewer=Depends(_viewer_dependency),
+            filters: dict = Depends(_list_filters),
         ):
             data = await getattr(service, verbs["list"])(
-                skip=skip, limit=limit, **_read_kwargs(viewer)
+                skip=skip, limit=limit, **_read_kwargs(viewer), **filters
             )
             return BaseResponse(status="success", data=data)
     else:
@@ -130,8 +152,9 @@ def build_crud_router(
         async def list_items(  # type: ignore[misc]  # mesma rota definida em ramos if/else exclusivos
             service=Depends(service_dependency),
             viewer=Depends(_viewer_dependency),
+            filters: dict = Depends(_list_filters),
         ):
-            data = await getattr(service, verbs["list"])(**_read_kwargs(viewer))
+            data = await getattr(service, verbs["list"])(**_read_kwargs(viewer), **filters)
             return BaseResponse(status="success", data=data)
 
     @router.get("/{item_id}", response_model=BaseResponse[response_schema])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime

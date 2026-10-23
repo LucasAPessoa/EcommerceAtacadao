@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -30,3 +30,12 @@ class ProductVariantRepository(BaseRepository[ProductVariant, ProductVariantResp
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_by_product(self, product_id: UUID) -> List[ProductVariantResponseSchema]:
+        query = select(ProductVariant).where(
+            ProductVariant.product_id == product_id, ProductVariant.deleted_at.is_(None)
+        )
+        result = await self.session.execute(
+            query.order_by(ProductVariant.created_at, ProductVariant.id)
+        )
+        return [self.response_schema.model_validate(o) for o in result.scalars().all()]
