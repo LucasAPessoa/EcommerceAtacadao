@@ -3,7 +3,6 @@ from uuid import UUID
 
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
 from src.schemas.catalog.product_variant_schema import (
-    ProductVariantCreateSchema,
     ProductVariantResponseSchema,
     ProductVariantUpdateSchema,
 )
@@ -13,25 +12,12 @@ class ProductVariantService:
     def __init__(self, repository: ProductVariantRepository):
         self.repository = repository
 
-    async def create_variant(
-        self, variant_in: ProductVariantCreateSchema
-    ) -> ProductVariantResponseSchema:
-        """Regras de negócio para as variações (SKUs) do produto."""
-
-        if not variant_in.bling_sku or not variant_in.bling_sku.strip():
-            raise ValueError("A variação precisa obrigatoriamente de um SKU do Bling.")
-
-        if variant_in.base_price < 0:
-            raise ValueError("O preço base não pode ser negativo, che.")
-
-        if variant_in.stock_quantity < 0:
-            raise ValueError("O estoque não pode ser negativo.")
-
-        data = variant_in.model_dump(exclude_unset=True)
-        return await self.repository.create(data)
-
-    async def list_variants(self) -> List[ProductVariantResponseSchema]:
-        return await self.repository.get_all()
+    async def list_variants(
+        self, product_id: Optional[UUID] = None
+    ) -> List[ProductVariantResponseSchema]:
+        if product_id is None:
+            return await self.repository.get_all()
+        return await self.repository.get_by_product(product_id)
 
     async def get_variant_by_id(self, variant_id: UUID) -> Optional[ProductVariantResponseSchema]:
         return await self.repository.get_by_id(variant_id)
@@ -44,6 +30,3 @@ class ProductVariantService:
 
         data = variant_in.model_dump(exclude_unset=True)
         return await self.repository.update(variant_id, data)
-
-    async def delete_variant(self, variant_id: UUID) -> bool:
-        return await self.repository.delete(variant_id)

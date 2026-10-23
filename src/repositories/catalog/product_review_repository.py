@@ -16,11 +16,17 @@ class ProductReviewRepository(BaseRepository[ProductReview, ProductReviewRespons
         )
 
     async def get_all(
-        self, skip: int = 0, limit: int = 100, only_approved: bool = False
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        only_approved: bool = False,
+        product_id: Optional[UUID] = None,
     ) -> List[ProductReviewResponseSchema]:
         query = select(ProductReview)
         if only_approved:
             query = query.where(ProductReview.is_approved.is_(True))
+        if product_id is not None:
+            query = query.where(ProductReview.product_id == product_id)
         result = await self.session.execute(query.offset(skip).limit(limit))
         return [self.response_schema.model_validate(o) for o in result.scalars().all()]
 

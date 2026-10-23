@@ -33,4 +33,5 @@ router = build_crud_router(
     not_found_message="Tier não encontrado.",
     create_roles=["admin"],
     write_roles=["admin"],
+    list_filters={"product_id": "Filtra pelo produto (UUID)."},
 )

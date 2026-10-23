@@ -172,7 +172,7 @@ class _FakeReviewRepo:
             for approved in (True, False)
         ]
 
-    async def get_all(self, skip=0, limit=100, only_approved=False):
+    async def get_all(self, skip=0, limit=100, only_approved=False, product_id=None):
         return [r for r in self.rows if r["is_approved"] or not only_approved]
 
     async def get_by_id(self, id, only_approved=False):
