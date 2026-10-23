@@ -182,18 +182,41 @@ Checks obrigatórios: `Lint (bugs reais)` e `Testes unitários (py3.11)` / `(py3
 Ruff completo, mypy e `pip-audit` rodam como `Report - ...` (não bloqueantes até a #20).
 Localmente: `uv sync --frozen && uv run ruff check --select E9,F63,F7,F82 src tests`
 e `uv run pytest -q $(find tests -name '*_unit.py')` (requer as variáveis obrigatórias do `.env.example`).
-Migrations de produção: apenas via `migrate-production.yml` (manual, environment `production`).
+Migrations de produção: apenas via `migrate-production.yml` (manual, só na `main`, input `client` = id ou `all`;
+um job e um environment do GitHub por cliente, definidos em `.github/clients.json`).
 
 ### Migration gate
 
 Ordem obrigatória: PR só de migrations -> merge -> rodar `Migrate production` -> PR do código.
-O workflow registra a revisão aplicada como Deployment `database-production`; o check
+O workflow registra a revisão aplicada como Deployment no `db_record_environment` de cada cliente
+(demo: `database-production`); o check
 `Migration gate` (PRs) falha se o PR misturar migrations com código (`src/` fora de `src/models/`, deps,
 workflows). Exceção: `src/models/**` é permitido junto com `migrations/`, pois o
 `alembic check` do CI exige os models da migration no mesmo PR (migration + models).
-PR só com `src/models/` (sem migration) conta como código. O check também falha se o head do Alembic do branch diferir da última revisão registrada. Não acessa o banco.
+PR só com `src/models/` (sem migration) conta como código. O check também falha se o head do Alembic do branch diferir da última revisão registrada de **qualquer cliente ativo**, nomeando os atrasados. Não acessa o banco.
 PR só com `docs/`, `reports/`, `README.md`, `AGENTS.md` ou `CHANGELOG.md` passa sem comparar
 revisão. Workflows/CI, `tests/` isolados e qualquer outro arquivo contam como código.
-Bootstrap (uma vez, após o merge desta mudança): rode `Migrate production` na `main`
+Bootstrap (uma vez por cliente): rode `Migrate production` na `main` com o cliente
 (upgrade sem pendências é no-op) para criar o primeiro registro; só então marque
 `Migration gate` como check obrigatório da `main`.
+
+### Adicionar um cliente
+
+O registro `.github/clients.json` (sem segredos) alimenta `Migrate production`, `Migration gate` e
+`Deploy smoke`. Clientes com `"active": false` são ignorados pelos três.
+
+1. No GitHub (Settings > Environments), crie o environment do cliente (ex.: `production-<id>`) com o secret
+   `DATABASE_URL` (URL direta do banco do cliente) e revisores obrigatórios.
+2. Provisione o projeto Vercel da API e do front do cliente, com as variáveis do #51
+   (`TENANT_ID` = id do cliente, `STORE_ORIGIN_ZIP_CODE`, `MELHOR_ENVIO_TOKEN`, `MELHOR_ENVIO_USER_AGENT`,
+   `CORS_ALLOWED_ORIGINS` = origem do front, etc.).
+3. Em `.github/clients.json` preencha a entrada: `id` (`[a-z0-9-]{1,64}`, único, igual ao `TENANT_ID`),
+   `github_environment`, `db_record_environment` (ex.: `database-<id>`, único), `api_url` e `front_url`
+   (https, sem barra final) e `vercel_project`. Valide com `python3 .github/scripts/clients.py validate`.
+4. Abra um PR que só ativa o cliente (`"active": true`) em `.github/clients.json`. O `Migration gate` lê a lista
+   de ativos do registro da base do PR, então esse PR passa. Após o merge, rode `Migrate production` na `main`
+   com `client=<id>` (aprove no environment): aplica as migrations e cria o primeiro registro de revisão (bootstrap).
+   Até lá, PRs de código falham no gate nomeando o cliente; depois do bootstrap, reexecute os checks.
+5. Rode `Deploy smoke` manualmente e confirme saúde, catálogo e CORS do novo cliente. Com vários projetos
+   Vercel ligados ao repositório, o environment do deploy é `Production – <projeto>`; o smoke automático
+   resolve o cliente por `vercel_project`.

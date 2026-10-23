@@ -51,7 +51,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen
       - name: Executa todos os tests/**/*_unit.py
-        run: uv run pytest -q $(find tests -name '*_unit.py' | sort)
+        run: |
+          mapfile -t files < <(find tests -name '*_unit.py' | sort)
+          test "${#files[@]}" -gt 0
+          uv run pytest -q "${files[@]}"
 
   integration:
     name: Integração (Postgres + Redis)
@@ -100,7 +103,10 @@ jobs:
       - name: Drift entre modelos e migrações
         run: uv run alembic check
       - name: Testes *_integration.py (sobem o próprio Docker)
-        run: uv run pytest -q $(find tests -name '*_integration.py' | sort)
+        run: |
+          mapfile -t files < <(find tests -name '*_integration.py' | sort)
+          test "${#files[@]}" -gt 0
+          uv run pytest -q "${files[@]}"
       - name: Testes de API (migrações + seed + uvicorn)
         run: ./scripts/run_api_tests.sh
 

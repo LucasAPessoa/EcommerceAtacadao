@@ -1,0 +1,22 @@
+{
+  "clients": [
+    {
+      "id": "demo",
+      "active": true,
+      "github_environment": "production",
+      "db_record_environment": "database-production",
+      "api_url": "https://ecommerce-atacadao.vercel.app",
+      "front_url": "https://frontatacadao.vercel.app",
+      "vercel_project": "ecommerce-atacadao"
+    },
+    {
+      "id": "atacadao-da-china",
+      "active": false,
+      "github_environment": "production-atacadao-da-china",
+      "db_record_environment": "database-atacadao-da-china",
+      "api_url": "https://<a definir na #65>",
+      "front_url": "https://<a definir na #65>",
+      "vercel_project": "<a definir na #65>"
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 name: Deploy smoke
 
-# Smoke test do alias de producao apos a Vercel publicar a main.
-# Somente leitura: nao migra banco nem faz deploy.
+# Smoke test dos clientes em produção após a Vercel publicar a main.
+# Automático: roda só para o cliente do deploy (resolvido pelo registro .github/clients.json).
+# Manual: matriz sobre todos os clientes ativos. Somente leitura: não migra nem faz deploy.
 on:
   deployment_status:
   workflow_dispatch:
@@ -9,33 +10,75 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-smoke
-  cancel-in-progress: false
-
-env:
-  BASE_URL: https://ecommerce-atacadao.vercel.app
-
 jobs:
-  smoke:
-    name: Smoke test (producao)
+  plan:
+    name: Plano (cliente do deploy)
+    # Environment da Vercel: `Production` ou `Production – <projeto>`.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.deployment_status.state == 'success' &&
-       github.event.deployment_status.environment == 'Production')
+       startsWith(github.event.deployment_status.environment, 'Production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_clients: ${{ steps.plan.outputs.has_clients }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          DEPLOY_ENV: ${{ github.event.deployment_status.environment }}
+          TARGET_URL: ${{ github.event.deployment_status.target_url }}
+        run: |
+          python3 .github/scripts/clients.py validate
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            client=all
+          else
+            python3 .github/scripts/clients.py resolve-deployment --environment "$DEPLOY_ENV" --url "$TARGET_URL" > "$RUNNER_TEMP/client.txt" || { cat "$RUNNER_TEMP/client.txt"; exit 1; }
+            client=$(cat "$RUNNER_TEMP/client.txt")
+            if [ -z "$client" ]; then
+              echo "::warning title=Deploy smoke::Deploy '$DEPLOY_ENV' ($TARGET_URL) não pertence a nenhum cliente ativo; nada a verificar."
+              echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+              echo "has_clients=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          if ! python3 .github/scripts/clients.py matrix --client "$client" > "$RUNNER_TEMP/matrix.json"; then
+            cat "$RUNNER_TEMP/matrix.json"
+            exit 1
+          fi
+          echo "matrix=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "has_clients=true" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    name: Smoke ${{ matrix.id }}
+    needs: plan
+    if: needs.plan.outputs.has_clients == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: deploy-smoke-${{ matrix.id }}
+      cancel-in-progress: false
     steps:
-      - name: Verificar rotas
+      - name: Verificar rotas e CORS
         env:
+          CLIENT_ID: ${{ matrix.id }}
+          BASE_URL: ${{ matrix.api_url }}
+          FRONT_URL: ${{ matrix.front_url }}
+          VERCEL_PROJECT: ${{ matrix.vercel_project }}
           DEPLOYMENT_URL: ${{ github.event.deployment_status.target_url }}
           DEPLOYMENT_SHA: ${{ github.event.deployment.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -u
           failed=0
+          : > fail.txt
           check() {
-            path="$1"; ok=0
+            path="$1"; ok=0; code=000
             for attempt in 1 2 3 4 5; do
               code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 "$BASE_URL$path" || echo 000)
               echo "GET $path tentativa $attempt/5 -> $code"
@@ -44,22 +87,40 @@ jobs:
             done
             if [ "$ok" -ne 1 ]; then failed=1; echo "- FALHA: \`GET $path\` (ultimo status: $code)" >> fail.txt; fi
           }
-          : > fail.txt
+          # Preflight CORS com a origem do front do cliente: 200 e origem refletida.
+          check_cors() {
+            path="/api/v1/catalog/categories/?limit=1"; ok=0; code=000; allow=""
+            for attempt in 1 2 3 4 5; do
+              curl -sS -D headers.txt -o /dev/null --connect-timeout 5 --max-time 15 -X OPTIONS \
+                -H "Origin: $FRONT_URL" -H "Access-Control-Request-Method: GET" "$BASE_URL$path" > status.txt 2>&1 || true
+              code=$(awk 'NR==1{print $2}' headers.txt 2>/dev/null || true)
+              allow=$(tr -d '\r' < headers.txt | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
+              echo "OPTIONS $path (Origin $FRONT_URL) tentativa $attempt/5 -> ${code:-000} allow-origin='${allow}'"
+              if [ "${code:-000}" = "200" ] && [ "$allow" = "$FRONT_URL" ]; then ok=1; break; fi
+              [ "$attempt" -lt 5 ] && sleep 10
+            done
+            if [ "$ok" -ne 1 ]; then
+              failed=1
+              echo "- FALHA CORS: \`OPTIONS $path\` com Origin \`$FRONT_URL\` (status: ${code:-000}, access-control-allow-origin: \`${allow:-ausente}\`). Confira CORS_ALLOWED_ORIGINS da API." >> fail.txt
+            fi
+          }
           check /health
           # Rota publica que consulta o banco (listagem de categorias, limit minimo)
           check "/api/v1/catalog/categories/?limit=1"
+          check_cors
           if [ "$failed" -ne 0 ]; then
             {
-              echo "## Smoke test FALHOU em producao"
+              echo "## Smoke test FALHOU em producao: cliente \`$CLIENT_ID\`"
               echo
               cat fail.txt
               echo
               echo "Commit: \`$DEPLOYMENT_SHA\`"
               [ -n "$DEPLOYMENT_URL" ] && echo "Deployment: $DEPLOYMENT_URL"
               echo
-              echo "**Acao:** faca o rollback instantaneo no painel da Vercel (projeto \`ecommerce-atacadao\` > Deployments > deployment estavel anterior > Promote to Production / Instant Rollback)."
+              echo "**Acao:** faca o rollback instantaneo no painel da Vercel (projeto \`$VERCEL_PROJECT\` > Deployments > deployment estavel anterior > Promote to Production / Instant Rollback)."
               echo "Execucao: $RUN_URL"
             } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Smoke $CLIENT_ID::Smoke test falhou para o cliente $CLIENT_ID"
             exit 1
           fi
-          echo "## Smoke test OK em producao ($DEPLOYMENT_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Smoke test OK em producao: cliente \`$CLIENT_ID\` ($DEPLOYMENT_SHA)" >> "$GITHUB_STEP_SUMMARY"
