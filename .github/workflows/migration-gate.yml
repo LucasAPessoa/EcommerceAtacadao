@@ -2,7 +2,8 @@ name: Migration gate
 
 # Garante a ordem: PR de migrations -> merge -> 'Migrate production' -> PR de código.
 # Nunca acessa o banco de produção: compara o head do Alembic (offline) com a revisão
-# registrada pelo workflow 'Migrate production' como deployment `database-production`.
+# registrada pelo workflow 'Migrate production' como deployment de cada
+# `db_record_environment` dos clientes ativos em .github/clients.json.
 on:
   pull_request:
 
@@ -44,19 +45,37 @@ jobs:
         run: |
           git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/files.txt"
           uv run alembic heads > "$RUNNER_TEMP/heads.txt"
-          # Último deployment com status success em database-production (vazio se não há).
-          deployed=""
-          for id in $(gh api "repos/$REPO/deployments?environment=database-production&per_page=30" --jq '.[].id'); do
-            state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state // ""')
-            if [ "$state" = "success" ]; then
-              deployed=$(gh api "repos/$REPO/deployments/$id" --jq '.payload.revision // ""')
-              break
-            fi
-          done
-          if [ -n "$deployed" ] && ! [[ "$deployed" =~ ^[0-9a-f]+$ ]]; then
-            echo "::error title=Migration gate::Revisão inválida no deployment database-production." >&2
-            exit 1
+          # Revisão por cliente ativo: último deployment `success` do db_record_environment
+          # (null se não há). Registro validado antes de qualquer consulta.
+          # Lista de ativos vem da BASE do PR (HEAD^1): um PR não se isenta desativando cliente
+          # e o PR que ativa um cliente não trava (bootstrap ocorre após o merge).
+          # Só se a base existe e ainda não tem o registro (primeira introdução), usa o do PR;
+          # qualquer outra falha ao ler a base interrompe o gate.
+          git rev-parse --verify --quiet HEAD^1 > /dev/null
+          registry=.github/clients.json
+          if git cat-file -e HEAD^1:.github/clients.json 2>/dev/null; then
+            git show HEAD^1:.github/clients.json > "$RUNNER_TEMP/base-clients.json"
+            registry="$RUNNER_TEMP/base-clients.json"
           fi
-          echo "DEPLOYED_REVISION=$deployed" >> "$GITHUB_ENV"
+          python3 .github/scripts/clients.py --registry "$registry" validate
+          python3 .github/scripts/clients.py --registry "$registry" matrix --client all > "$RUNNER_TEMP/matrix.json"
+          echo '{}' > "$RUNNER_TEMP/deployed.json"
+          while IFS=$'\t' read -r cid renv; do
+            deployed=""
+            for id in $(gh api "repos/$REPO/deployments?environment=$renv&per_page=30" --jq '.[].id'); do
+              state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state // ""')
+              if [ "$state" = "success" ]; then
+                deployed=$(gh api "repos/$REPO/deployments/$id" --jq '.payload.revision // ""')
+                break
+              fi
+            done
+            if [ -n "$deployed" ] && ! [[ "$deployed" =~ ^[0-9a-f]+$ ]]; then
+              echo "::error title=Migration gate::Revisão inválida no deployment $renv ($cid)." >&2
+              exit 1
+            fi
+            jq --arg c "$cid" --arg r "$deployed" '. + {($c): (if $r == "" then null else $r end)}' \
+              "$RUNNER_TEMP/deployed.json" > "$RUNNER_TEMP/deployed.tmp"
+            mv "$RUNNER_TEMP/deployed.tmp" "$RUNNER_TEMP/deployed.json"
+          done < <(jq -r '.include[] | [.id, .db_record_environment] | @tsv' "$RUNNER_TEMP/matrix.json")
       - name: Decide
-        run: python3 .github/scripts/migration_gate.py --files "$RUNNER_TEMP/files.txt" --heads "$RUNNER_TEMP/heads.txt" --deployed "$DEPLOYED_REVISION"
+        run: python3 .github/scripts/migration_gate.py --files "$RUNNER_TEMP/files.txt" --heads "$RUNNER_TEMP/heads.txt" --deployed-json "$RUNNER_TEMP/deployed.json"

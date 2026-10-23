@@ -1,44 +1,50 @@
 name: Migrate production
 
-# Execução somente manual. O environment `production` exige aprovação de revisores
-# configurada no GitHub; DATABASE_URL vem do secret desse environment.
+# Execução somente manual, só a partir da main. Cada cliente do registro
+# (.github/clients.json) migra em job próprio, com o environment do GitHub dele
+# (aprovação de revisores e secret DATABASE_URL próprios) e registra a revisão aplicada.
 on:
   workflow_dispatch:
-
-concurrency:
-  group: migrate-production
-  cancel-in-progress: false
+    inputs:
+      client:
+        description: "Id do cliente (ver .github/clients.json) ou 'all' para todos os ativos"
+        required: false
+        default: all
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  migrate:
-    name: Alembic upgrade head (production)
+  plan:
+    name: Plano (registro de clientes)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
+    timeout-minutes: 10
     # workflow_dispatch permite escolher a branch; produção só migra a partir da main.
     if: github.ref == 'refs/heads/main'
     outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
       revision: ${{ steps.rev.outputs.revision }}
     steps:
       - uses: actions/checkout@v7
+      - name: Valida registro e gera matriz
+        id: matrix
+        env:
+          CLIENT: ${{ inputs.client }}
+        run: |
+          python3 .github/scripts/clients.py validate
+          # Captura em arquivo e imprime: `::error` do script precisa chegar ao log do runner.
+          if ! python3 .github/scripts/clients.py matrix --client "${CLIENT:-all}" > "$RUNNER_TEMP/matrix.json"; then
+            cat "$RUNNER_TEMP/matrix.json"
+            exit 1
+          fi
+          echo "matrix=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen --no-dev
-      - run: uv run alembic upgrade head
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # Exigidas por Settings, mas não usadas pelas migrations.
-          SECRET_KEY: migration-placeholder
-          REFRESH_SECRET_KEY: migration-placeholder
-          MELHOR_ENVIO_TOKEN: migration-placeholder
-          MELHOR_ENVIO_USER_AGENT: migration-placeholder
-          STORE_ORIGIN_ZIP_CODE: "00000000"
-      # Head aplicado = head do commit em execução (offline, sem DATABASE_URL).
-      - name: Lê revisão aplicada
+      # Head aplicado = head do commit em execução (offline, sem DATABASE_URL real).
+      - name: Lê revisão do commit
         id: rev
         run: |
           rev=$(uv run alembic heads | awk 'NR==1{print $1}')
@@ -52,26 +58,53 @@ jobs:
           MELHOR_ENVIO_USER_AGENT: migration-placeholder
           STORE_ORIGIN_ZIP_CODE: "00000000"
 
-  record:
-    # Registra a revisão como GitHub Deployment (environment distinto dos da Vercel).
-    # Sem secrets de banco; apenas GITHUB_TOKEN com deployments: write.
-    name: Registra revisão em produção
-    needs: migrate
+  migrate:
+    name: Migrate ${{ matrix.id }}
+    needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    environment: ${{ matrix.github_environment }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      group: migrate-${{ matrix.id }}
+      cancel-in-progress: false
+    # deployments: write vale para o job inteiro (GITHUB_TOKEN); DATABASE_URL só entra no passo do alembic.
+    # workflow_dispatch permite escolher a branch; produção só migra a partir da main.
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       deployments: write
     steps:
-      - name: Cria deployment database-production
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --no-dev
+      - name: Alembic upgrade head (${{ matrix.id }})
+        run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Exigidas por Settings, mas não usadas pelas migrations.
+          SECRET_KEY: migration-placeholder
+          REFRESH_SECRET_KEY: migration-placeholder
+          MELHOR_ENVIO_TOKEN: migration-placeholder
+          MELHOR_ENVIO_USER_AGENT: migration-placeholder
+          STORE_ORIGIN_ZIP_CODE: "00000000"
+      # Só roda se o upgrade deste cliente passou; environment distinto dos da Vercel.
+      - name: Registra revisão em ${{ matrix.db_record_environment }}
         env:
           GH_TOKEN: ${{ github.token }}
-          REVISION: ${{ needs.migrate.outputs.revision }}
+          REVISION: ${{ needs.plan.outputs.revision }}
+          CLIENT_ID: ${{ matrix.id }}
+          RECORD_ENV: ${{ matrix.db_record_environment }}
         run: |
-          id=$(jq -n --arg ref "$GITHUB_SHA" --arg rev "$REVISION" \
-            '{ref:$ref, environment:"database-production", auto_merge:false, required_contexts:[],
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg rev "$REVISION" --arg env "$RECORD_ENV" --arg c "$CLIENT_ID" \
+            '{ref:$ref, environment:$env, auto_merge:false, required_contexts:[],
               production_environment:false, transient_environment:false,
-              description:"Alembic revision \($rev)", payload:{revision:$rev}}' \
+              description:"Alembic revision \($rev) (\($c))", payload:{revision:$rev, client:$c}}' \
             | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)
           gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
-            -f state=success -f description="Alembic revision $REVISION"
+            -f state=success -f description="Alembic revision $REVISION ($CLIENT_ID)"
+          echo "Cliente $CLIENT_ID migrado e registrado em $RECORD_ENV: $REVISION" >> "$GITHUB_STEP_SUMMARY"
