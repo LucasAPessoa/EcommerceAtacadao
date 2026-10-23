@@ -14,18 +14,6 @@ class ListingAttributeBaseSchema(BaseModel):
     unit: Optional[str] = Field(None, max_length=50)
 
 
-class ListingAttributeCreateSchema(ListingAttributeBaseSchema):
-    listing_id: UUID
-
-
-class ListingAttributeUpdateSchema(BaseModel):
-    bling_external_id: Optional[str] = Field(None, max_length=50)
-    name: Optional[str] = Field(None, max_length=100)
-    attribute_type: Optional[str] = Field(None, max_length=50)
-    value: Optional[str] = Field(None, max_length=255)
-    unit: Optional[str] = Field(None, max_length=50)
-
-
 class ListingAttributeResponseSchema(ListingAttributeBaseSchema, TimestampMixinSchema):
     id: UUID
     listing_id: UUID

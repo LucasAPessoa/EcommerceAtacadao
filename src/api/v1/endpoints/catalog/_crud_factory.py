@@ -34,8 +34,8 @@ def build_crud_router(
     prefix: str,
     tags: List[str],
     service_dependency: Callable,
-    create_schema: Type[BaseModel],
-    update_schema: Type[BaseModel],
+    create_schema: Optional[Type[BaseModel]] = None,
+    update_schema: Optional[Type[BaseModel]] = None,
     response_schema: Type[BaseModel],
     verbs: dict,
     not_found_message: str = "Registro não encontrado.",
@@ -44,6 +44,7 @@ def build_crud_router(
     write_roles: Optional[List[str]] = None,
     create_as_author: bool = False,
     hide_unapproved_from_public: bool = False,
+    read_only: bool = False,
 ) -> APIRouter:
     """
     verbs: dict com os nomes reais dos métodos do service, ex.:
@@ -62,6 +63,10 @@ def build_crud_router(
         opcional e passam `include_unapproved=<é admin>` ao service. Anônimo,
         token inválido ou role não-admin só veem registros aprovados (o
         por-id de não aprovado vira 404). Token inválido NÃO gera 401.
+
+    read_only: se True, não registra POST/PATCH/DELETE (só GETs); o roteamento
+        responde 405 a essas operações. Nesse caso create_schema, update_schema
+        e os verbs "create"/"update"/"delete" são dispensáveis.
     """
     router = APIRouter(prefix=prefix, tags=tags)  # type: ignore[arg-type]  # list[str] aceito pelo FastAPI (tags: list[str | Enum])
 
@@ -75,22 +80,24 @@ def build_crud_router(
             return Depends(require_role(write_roles))
         return Depends(get_current_active_user)
 
-    @router.post(
-        "/",
-        response_model=BaseResponse[response_schema],  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
-        status_code=status.HTTP_201_CREATED,
-    )
-    async def create_item(
-        payload: create_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
-        service=Depends(service_dependency),
-        _user=_create_dependency(),
-    ):
-        try:
-            create = getattr(service, verbs["create"])
-            data = await (create(payload, _user.id) if create_as_author else create(payload))
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        return BaseResponse(status="success", data=data)
+    if not read_only:
+
+        @router.post(
+            "/",
+            response_model=BaseResponse[response_schema],  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
+            status_code=status.HTTP_201_CREATED,
+        )
+        async def create_item(
+            payload: create_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
+            service=Depends(service_dependency),
+            _user=_create_dependency(),
+        ):
+            try:
+                create = getattr(service, verbs["create"])
+                data = await (create(payload, _user.id) if create_as_author else create(payload))
+            except ValueError as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            return BaseResponse(status="success", data=data)
 
     async def _no_viewer():
         return None
@@ -138,29 +145,31 @@ def build_crud_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
         return BaseResponse(status="success", data=data)
 
-    @router.patch("/{item_id}", response_model=BaseResponse[response_schema])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
-    async def update_item(
-        item_id: UUID,
-        payload: update_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
-        service=Depends(service_dependency),
-        _user=_write_dependency(),
-    ):
-        try:
-            data = await getattr(service, verbs["update"])(item_id, payload)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        if not data:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
-        return BaseResponse(status="success", data=data)
+    if not read_only:
 
-    @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-    async def delete_item(
-        item_id: UUID,
-        service=Depends(service_dependency),
-        _user=_write_dependency(),
-    ):
-        success = await getattr(service, verbs["delete"])(item_id)
-        if not success:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
+        @router.patch("/{item_id}", response_model=BaseResponse[response_schema])  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
+        async def update_item(
+            item_id: UUID,
+            payload: update_schema,  # type: ignore[valid-type]  # schema dinâmico: FastAPI resolve a anotação em runtime
+            service=Depends(service_dependency),
+            _user=_write_dependency(),
+        ):
+            try:
+                data = await getattr(service, verbs["update"])(item_id, payload)
+            except ValueError as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            if not data:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
+            return BaseResponse(status="success", data=data)
+
+        @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+        async def delete_item(
+            item_id: UUID,
+            service=Depends(service_dependency),
+            _user=_write_dependency(),
+        ):
+            success = await getattr(service, verbs["delete"])(item_id)
+            if not success:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_message)
 
     return router

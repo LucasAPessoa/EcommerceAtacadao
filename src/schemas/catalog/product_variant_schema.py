@@ -24,8 +24,9 @@ class ProductVariantBaseSchema(BaseModel):
     length_cm: Optional[float] = Field(None, ge=0)
 
 
-class ProductVariantCreateSchema(ProductVariantBaseSchema):
-    product_id: UUID
+class ProductVariantPriceUpdateSchema(BaseModel):
+    base_price: Decimal = Field(..., ge=0)
+    model_config = ConfigDict(extra="forbid")
 
 
 class ProductVariantUpdateSchema(BaseModel):
