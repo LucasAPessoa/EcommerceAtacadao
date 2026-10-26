@@ -193,7 +193,10 @@ class BlingConnectionService:
         self._ensure_usable(connection)
         assert connection is not None
         if stale_token is None and not self._needs_refresh(connection, now):
-            return self._decrypt_access(connection)
+            try:
+                return crypto.decrypt(connection.access_token_enc or b"")
+            except crypto.CryptoError:
+                pass  # segue ao caminho com lock, que marca RECONNECT_REQUIRED
 
         connection = await self.repository.get_for_update()
         self._ensure_usable(connection)
@@ -243,18 +246,15 @@ class BlingConnectionService:
         if connection.status == BlingConnectionStatusEnum.RECONNECT_REQUIRED:
             raise BlingReconnectRequiredError()
 
-    @staticmethod
-    def _decrypt_access(connection: BlingConnection) -> str:
-        try:
-            return crypto.decrypt(connection.access_token_enc or b"")
-        except crypto.CryptoError:
-            raise BlingReconnectRequiredError() from None
-
     async def _store_refreshed(
         self, connection: BlingConnection, tokens: oauth.TokenSet, now: datetime
     ) -> None:
-        access_enc, key_version = crypto.encrypt(tokens.access_token)
-        refresh_enc, _ = crypto.encrypt(tokens.refresh_token)
+        try:
+            access_enc, key_version = crypto.encrypt(tokens.access_token)
+            refresh_enc, _ = crypto.encrypt(tokens.refresh_token)
+        except crypto.CryptoError:
+            await self._mark_reconnect(connection, "token_encrypt_failed")
+            raise BlingReconnectRequiredError() from None
         connection.access_token_enc = access_enc
         connection.refresh_token_enc = refresh_enc
         connection.key_version = key_version
