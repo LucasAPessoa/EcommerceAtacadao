@@ -49,6 +49,14 @@ Os domínios são:
   Somente pedidos aguardando pagamento podem ser cancelados diretamente.
 - Migrações Alembic, reset local protegido, seed determinístico e suíte de testes
   unitários e black-box.
+- Portal de admin (spec 007) em `/admin/`, app separado da loja com login e sessão
+  próprios: dashboard calculado no servidor, produtos (busca, filtros, preço do
+  site e faixas), pedidos (filtros e ações de cancelar, reconciliar e reembolsar),
+  moderação de avaliações e perguntas, conexão e importação do Bling com
+  pendências. Rotas da API em `/api/v1/admin/*`, só para administradores.
+- Camada de apresentação do site por produto (constituição, princípio I): nome,
+  descrições e categorias personalizáveis por campo, visibilidade e destaque, sem
+  que a sync do Bling sobrescreva.
 
 ## Escopo previsto, ainda não implementado ponta a ponta
 
@@ -57,7 +65,8 @@ Os domínios são:
   boleto.
 - Entrega regional por faixas de CEP, Loggi/Correios diretos, etiquetas e coleta.
 - Fluxos administrativos de remessa, reembolso, chargeback e nota fiscal.
-- Dashboards e frontend administrativo/cliente.
+- Seções do portal ainda "em breve": clientes, entrega própria (front #27),
+  despacho (front #26) e configurações.
 - Workers, filas, agendamentos e observabilidade de produção.
 
 Modelos ou dados de seed para esses conceitos não significam que o fluxo externo
