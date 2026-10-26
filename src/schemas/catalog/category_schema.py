@@ -13,17 +13,6 @@ class CategoryBaseSchema(BaseModel):
     is_active: bool = True
 
 
-class CategoryCreateSchema(CategoryBaseSchema):
-    pass
-
-
-class CategoryUpdateSchema(BaseModel):
-    bling_id: Optional[int] = None
-    name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-
-
 class CategoryResponseSchema(CategoryBaseSchema, SoftDeleteMixinSchema):
     id: UUID
     model_config = ConfigDict(from_attributes=True)
