@@ -230,6 +230,15 @@ class CatalogSyncRepository:
         )
         return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
+    async def deactivate_unlinked_categories(self) -> int:
+        """Desativa (nunca apaga) categorias ativas sem bling_id: seed fora do Bling."""
+        result = await self.session.execute(
+            update(Category)
+            .where(Category.bling_id.is_(None), Category.is_active.is_(True))
+            .values(is_active=False, updated_at=datetime.utcnow())
+        )
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
     async def count_bling_products(self) -> int:
         query = select(func.count()).select_from(Product).where(Product.bling_id.is_not(None))
         return int((await self.session.execute(query)).scalar_one())

@@ -761,6 +761,9 @@ class CatalogSyncService:
             # só depois de o Bling listar algo (lista vazia nunca derruba o catálogo).
             if self.state.seen_bling_ids:
                 self.run.deactivated += await self.repository.deactivate_unlinked()
+                categories = await self.repository.deactivate_unlinked_categories()
+                if categories:
+                    logger.info("catalog_sync_legacy_categories_deactivated n=%s", categories)
         logger.info(
             "catalog_sync_cycle full=%s pass2_items=%s detailed=%s seen=%s",
             bool(self._cursor("full")),
