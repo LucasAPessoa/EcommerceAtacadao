@@ -16,6 +16,9 @@ from .catalog import (
     ProductVariant,
 )
 
+# Apresentação do site por produto
+from .catalog_presentation import ProductSitePresentation, product_site_categories
+
 # Domínio de Sincronização do Catálogo (Bling)
 from .catalog_sync import CatalogSyncRun, CatalogSyncState
 
@@ -68,4 +71,6 @@ __all__ = [
     "BlingConnectionEvent",
     "CatalogSyncState",
     "CatalogSyncRun",
+    "ProductSitePresentation",
+    "product_site_categories",
 ]
