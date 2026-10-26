@@ -60,6 +60,8 @@ class Product(Base, TimestampMixin, SoftDeleteMixin):
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
     bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
+    bling_content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bling_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     name: Mapped[str] = mapped_column(String(200))
     code: Mapped[Optional[str]] = mapped_column(String(100), unique=True)  # Root SKU
@@ -111,6 +113,7 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
 
     bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
     bling_sku: Mapped[str] = mapped_column(String(100), unique=True)  # Variation code
+    bling_stock_balance: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     variation_name: Mapped[str] = mapped_column(String(100))  # e.g., "Size:L;Color:Green"
 
     gtin: Mapped[Optional[str]] = mapped_column(String(50))  # Barcode / EAN
@@ -206,7 +209,7 @@ class ProductImage(Base, TimestampMixin):
     variant_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("product_variants.id")
     )
-    image_url: Mapped[str] = mapped_column(String(255))
+    image_url: Mapped[str] = mapped_column(String(1000))
     is_main: Mapped[bool] = mapped_column(default=False)
 
     variant: Mapped["ProductVariant"] = relationship(back_populates="images")
