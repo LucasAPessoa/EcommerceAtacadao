@@ -16,6 +16,7 @@
 
 - Q: Até a origem do preço por produto (#56) existir, a importação grava o preço do Bling? → A: Só ao criar a variação; depois nunca sobrescreve. Alternar por produto entre preço do Bling e preço do site fica para depois do MVP (#56).
 - Q: Como conciliar o saldo do Bling com vendas do site que ainda não chegaram ao Bling? → A: Estoque disponível no site = saldo do Bling − quantidades de pedidos pagos no site ainda não registrados no Bling (funciona como uma reserva). Quando o envio de pedidos ao Bling existir, cada pedido sai da conta ao ser registrado lá.
+- Q: Variação com preço ausente ou zero pode ser vendida? → A: Não; só fica à venda com preço do site maior que zero. Se o admin ajustar o preço no site, a próxima importação a libera.
 - Q: Anúncios entram nesta importação? → A: Não; os anúncios do Bling ligados a outros canais de venda ficam fora do MVP. Nome, descrição curta, descrição complementar, marca, unidade e demais dados exibidos vêm do cadastro do produto no Bling; a vitrine usa esses dados e as imagens do produto e das variações. Cada variação usa as imagens próprias que tiver no Bling; sem imagens próprias, herda as do produto.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -89,7 +90,7 @@ O administrador sabe quando o catálogo foi atualizado pela última vez e se hou
 - **FR-001**: O sistema MUST importar do cadastro de produtos do Bling produtos (nome, descrição curta e complementar, marca, unidade, situação), variações, categorias, saldo total de estoque, imagens, peso e medidas, gravando cada item pelo identificador do Bling (cria se não existe, atualiza se existe).
 - **FR-002**: Executar a importação duas vezes sem mudança no Bling MUST NOT alterar nenhum dado do catálogo.
 - **FR-003**: Produtos inativos no Bling ou ausentes dele MUST ser desativados no site (fora da vitrine e do checkout), nunca apagados.
-- **FR-004**: Produtos ou variações sem peso ou medidas MUST ficar fora de venda até serem completados no Bling.
+- **FR-004**: Produtos ou variações sem peso ou medidas MUST ficar fora de venda até serem completados no Bling; variações com preço do site ausente ou ≤ 0 MUST ficar fora de venda até o preço ser ajustado.
 - **FR-005**: Desativação por ausência MUST acontecer só quando a leitura do catálogo do Bling foi completa; leitura parcial MUST NOT desativar nada.
 - **FR-006**: Cada execução MUST ser registrada com início, fim, situação, contagens e erros por item, sem dados sensíveis.
 - **FR-007**: A importação MUST rodar periodicamente sem ação humana e MUST poder ser disparada manualmente pelo administrador; nunca duas ao mesmo tempo.

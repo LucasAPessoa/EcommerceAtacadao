@@ -109,6 +109,16 @@ Prefixo `/api/v1/integrations/bling`. Contrato completo em
 Sem as variáveis do Bling configuradas, `/connect` e `/callback` respondem 503
 ("Integração com o Bling não configurada."); o deploy sem Bling segue funcionando.
 
+## Importação do catálogo do Bling
+
+Contrato em `specs/006-bling-importacao-catalogo/contracts/http-api.md`. Sem token em nenhuma resposta.
+
+| Endpoint | Acesso | Resultado |
+| --- | --- | --- |
+| `POST /api/v1/integrations/bling/catalog-sync` | admin | executa uma fatia e devolve a execução corrente (se já há ciclo, devolve-o); 409 "Conexão com o Bling inativa" (registra `SKIPPED`); 503 sem Bling configurado |
+| `GET /api/v1/integrations/bling/catalog-sync/runs?limit=20` | admin | `{current, items}` (limit 1-100, mais recentes primeiro; `phase` só na corrente; no máximo 50 erros por execução) |
+| `POST /api/v1/internal/jobs/catalog-sync` | `Bearer MAINTENANCE_JOB_TOKEN` | `{run_id, status, phase, interrupted_by_budget}`; `status` `BUSY` (outra invocação), `IDLE` (intervalo não venceu) ou o da execução; 401 sem token |
+
 ## Matriz resumida
 
 | Área | Público | Usuário autenticado | Admin |
@@ -122,6 +132,7 @@ Sem as variáveis do Bling configuradas, `/connect` e `/callback` respondem 503
 | Pedidos | Não | Apenas próprios | Visão administrativa |
 | Perfil/endereços | Não | Apenas próprios | Sem acesso implícito |
 | Conexão Bling | Só `/callback` (valida `state`) | Não | Sim |
+| Importação do catálogo | Não (job: token de serviço) | Não | Sim |
 
 Administração não elimina ownership automaticamente. Só amplie acesso quando a
 rota e a regra de negócio declararem isso explicitamente.

@@ -35,4 +35,6 @@ class ProductResponseSchema(ProductBaseSchema, SoftDeleteMixinSchema):
     id: UUID
     categories: List[CategoryResponseSchema]
     variants: List[ProductVariantResponseSchema]
+    # Uso interno da importação do Bling (marcas de sincronização): nunca na resposta pública.
+    inventory_raw: Optional[Dict[str, Any]] = Field(default=None, exclude=True)
     model_config = ConfigDict(from_attributes=True)

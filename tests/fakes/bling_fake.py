@@ -1,12 +1,13 @@
 """Bling simulado para testes (ASGI). Uso: ``uvicorn tests.fakes.bling_fake:app --port N``.
 
-Rotas do Bling sob ``/Api/v3`` (authorize, oauth/token, oauth/revoke, dados da empresa e um
-recurso genérico) e rotas de controle sob ``/__control`` (configurar respostas, ler o
-contador de chamadas, resetar). Nunca registra código, token nem segredo: as chamadas
-guardam só método, caminho, ``grant_type`` e se o Basic auth estava correto.
+Rotas do Bling sob ``/Api/v3`` (authorize, oauth/token, oauth/revoke, dados da empresa,
+catálogo de leitura e um recurso genérico) e rotas de controle sob ``/__control`` (configurar
+respostas, ler o contador de chamadas, resetar). Nunca registra código, token nem segredo:
+as chamadas guardam só método, caminho, ``grant_type`` e se o Basic auth estava correto.
 """
 
 import base64
+import copy
 import itertools
 import os
 from typing import Any
@@ -26,6 +27,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "rotate_refresh": True,
     "expires_in": 3600,
     "company": {"id": "company-a", "nome": "Empresa A Ltda", "cnpj": "11222333000181"},
+    # Catálogo: "products" (detalhes no formato do Bling), "categories", "balances"
+    # ({"<id>": saldo}) e "catalog_failures" ({"produtos:list:2": 503, "produtos:detail:7": 429,
+    # "categorias:1": 503, "saldos": 503}).
+    "products": [],
+    "categories": [],
+    "balances": {},
+    "catalog_failures": {},
 }
 
 _config: dict[str, Any] = {}
@@ -35,7 +43,7 @@ _counter = itertools.count(1)
 
 def _reset() -> None:
     _config.clear()
-    _config.update({**DEFAULT_CONFIG, "company": dict(DEFAULT_CONFIG["company"])})
+    _config.update(copy.deepcopy(DEFAULT_CONFIG))
     _calls.clear()
 
 
@@ -122,6 +130,85 @@ async def resource(rest: str, request: Request):
     if failure := _failure(_config["resource_mode"]):
         return failure
     return {"data": {"path": rest}}
+
+
+def _catalog_guard(request: Request, key: str) -> JSONResponse | None:
+    _calls.append({"method": "GET", "path": f"/catalogo/{key}"})
+    if not request.headers.get("authorization", "").startswith("Bearer access-"):
+        return JSONResponse({"error": {"type": "invalid_token", "message": "unauthorized"}}, 401)
+    failure = _config["catalog_failures"].get(key)
+    return _failure(str(failure)) if failure else None
+
+
+def _paginate(rows: list[Any], pagina: int, limite: int) -> list[Any]:
+    start = (max(pagina, 1) - 1) * limite
+    return rows[start : start + limite]
+
+
+@app.get("/Api/v3/produtos")
+async def list_products(
+    request: Request,
+    pagina: int = 1,
+    limite: int = 100,
+    dataAlteracaoInicial: str | None = None,
+    situacao: str | None = None,
+):
+    if failure := _catalog_guard(request, f"produtos:list:{pagina}"):
+        return failure
+    rows = []
+    for product in _config["products"]:
+        changed = product.get("dataAlteracao")
+        if dataAlteracaoInicial and not (changed and changed >= dataAlteracaoInicial):
+            continue
+        if situacao and product.get("situacao", "A") != situacao:
+            continue
+        rows.append(
+            {
+                "id": product["id"],
+                "nome": product.get("nome"),
+                "codigo": product.get("codigo"),
+                "situacao": product.get("situacao", "A"),
+                "formato": product.get("formato", "S"),
+                "dataAlteracao": changed,
+            }
+        )
+    return {"data": _paginate(rows, pagina, limite)}
+
+
+@app.get("/Api/v3/produtos/{product_id}")
+async def get_product(request: Request, product_id: int):
+    if failure := _catalog_guard(request, f"produtos:detail:{product_id}"):
+        return failure
+    for product in _config["products"]:
+        if product["id"] == product_id:
+            return {"data": product}
+    return JSONResponse({"error": {"type": "RESOURCE_NOT_FOUND", "message": "nf"}}, 404)
+
+
+@app.get("/Api/v3/categorias/produtos")
+async def list_categories(request: Request, pagina: int = 1, limite: int = 100):
+    if failure := _catalog_guard(request, f"categorias:{pagina}"):
+        return failure
+    return {"data": _paginate(_config["categories"], pagina, limite)}
+
+
+@app.get("/Api/v3/estoques/saldos")
+async def balances(request: Request):
+    if failure := _catalog_guard(request, "saldos"):
+        return failure
+    ids = request.query_params.getlist("idsProdutos[]")
+    saldos = _config["balances"]
+    return {
+        "data": [
+            {
+                "produto": {"id": int(i)},
+                "saldoFisicoTotal": saldos[i],
+                "saldoVirtualTotal": saldos[i],
+            }
+            for i in ids
+            if i in saldos
+        ]
+    }
 
 
 @app.get("/__control/authorized", include_in_schema=False)

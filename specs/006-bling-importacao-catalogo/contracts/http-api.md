@@ -4,16 +4,17 @@ Prefixo `/api/v1`. Respostas no envelope `BaseResponse` do projeto. Sem token ou
 
 ## `POST /integrations/bling/catalog-sync` (admin)
 
-Pede um novo ciclo e executa uma fatia imediatamente (orçamento de tempo do job).
+Pede um novo ciclo e executa uma fatia imediatamente (orçamento de até 20 s; o cron continua o ciclo).
 
-- **200** `data`: a execução corrente (formato de `Run` abaixo). Se já havia ciclo em andamento, devolve esse ciclo (não cria outro).
+- **200** `data`: a execução corrente (formato de `Run` abaixo). Se já havia ciclo em andamento, devolve esse ciclo (não cria outro). `phase` só vem preenchida se o ciclo continua em andamento depois da fatia.
+- **409** `detail`: "Importação já em andamento" quando outra invocação detém o estado e não há execução corrente para devolver.
 - **409** `detail`: "Conexão com o Bling inativa" quando o status não é `CONNECTED` (nada é executado; uma execução `SKIPPED` é registrada).
 - **503**: Bling não configurado no deploy (mesma regra da spec 001).
 - **401/403**: sem autenticação / não admin.
 
 ## `GET /integrations/bling/catalog-sync/runs?limit=20` (admin)
 
-- **200** `data`: `{ "current": Run | null, "items": [Run, …] }`, mais recentes primeiro; `limit` 1–100.
+- **200** `data`: `{ "current": Run | null, "items": [Run, …] }`, mais recentes primeiro; `limit` 1–100. `items` também inclui a execução corrente (sem `phase`); `current` repete essa execução com `phase`.
 
 ```json
 Run = {
@@ -24,12 +25,12 @@ Run = {
   "finished_at": null,
   "phase": "SCAN",
   "counts": { "created": 0, "updated": 0, "deactivated": 0, "blocked": 0, "unchanged": 0, "failed": 0 },
-  "errors": [{ "bling_id": 123, "code": "incompleto_sem_peso", "message": "…" }],
+  "errors": [{ "bling_id": 123, "code": "incompleto_peso", "message": "…" }],
   "reason": null
 }
 ```
 
-`phase` só aparece na execução corrente. `errors` traz no máximo 50 itens por execução nesta resposta.
+`phase` existe só em `current` e na resposta do POST (não aparece nos `items`); `finished_at`, `reason` e `phase` vêm como `null` quando não se aplicam. Códigos de bloqueio: `incompleto_peso`, `incompleto_medidas`, `incompleto_preco`. Uma execução `SKIPPED` repetida com o mesmo motivo reaproveita a última linha (não cria outra). `errors` traz no máximo 50 itens por execução nesta resposta.
 
 ## `POST /internal/jobs/catalog-sync` (job)
 
@@ -37,6 +38,7 @@ Run = {
 
 - **200** `data`: `{ "run_id": "uuid | null", "status": "…", "phase": "…", "interrupted_by_budget": true }`.
 - **200** com `status: "BUSY"` quando outra invocação detém o estado.
+- **200** com `status: "IDLE"` e `run_id: null` quando não há ciclo em andamento e o intervalo ainda não venceu.
 - **401**: token ausente ou inválido.
 
 ## Inalterado

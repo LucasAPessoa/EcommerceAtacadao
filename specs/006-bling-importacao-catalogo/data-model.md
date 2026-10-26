@@ -50,7 +50,7 @@ Transições: `RUNNING → SUCCESS | PARTIAL | FAILED`; `SKIPPED` é criado já 
 
 ## Regras derivadas (sem coluna)
 
-- **Variação à venda** = ativa no Bling ∧ peso > 0 ∧ largura, altura, profundidade > 0 (com herança do pai) → `product_variants.is_active`.
+- **Variação à venda** = ativa no Bling ∧ peso > 0 ∧ largura, altura, profundidade > 0 (com herança do pai) ∧ `base_price` > 0 → `product_variants.is_active`.
 - **Produto à venda** = ativo no Bling ∧ ≥ 1 variação à venda → `products.is_active`.
 - **Estoque** = `max(0, bling_stock_balance − pendente)` → `product_variants.stock_quantity` (R5).
 - **Preço** = `preco` do Bling só na criação → `product_variants.base_price`.

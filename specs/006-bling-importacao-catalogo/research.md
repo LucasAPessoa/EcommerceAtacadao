@@ -43,7 +43,7 @@ Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real
 
 ## R8. Venda bloqueada por falta de peso/medidas
 
-- **Decision**: variação à venda = ativa no Bling **e** peso bruto > 0 **e** largura, altura e profundidade > 0 (herdando do pai quando a variação não tiver). Produto à venda = ativo no Bling e ao menos uma variação à venda. Motivo registrado nos erros por item (`incompleto: sem peso` etc.). `is_active` passa a ser derivado pela importação.
+- **Decision**: variação à venda = ativa no Bling **e** peso bruto > 0 **e** largura, altura e profundidade > 0 (herdando do pai quando a variação não tiver) **e** preço do site (`base_price`) > 0 (motivo `incompleto_preco`; decidido em 2026-10-26). Produto à venda = ativo no Bling e ao menos uma variação à venda. Motivo registrado nos erros por item (`incompleto: sem peso` etc.). `is_active` passa a ser derivado pela importação.
 
 ## R9. Gatilhos
 
