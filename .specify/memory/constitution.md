@@ -9,8 +9,16 @@ constituição não os substitui, apenas fixa o que não pode ser violado.
 ### I. O Bling é a fonte da verdade do catálogo
 Produto, variação, categoria, estoque (saldo total), peso, medidas e imagens vêm
 do Bling. O site não cria, edita nem exclui esses dados. As únicas exceções são
-configurações próprias do site: origem e valor do preço do site por produto e a
-entrega própria por bairro. Pedidos pagos voltam ao Bling, que emite a NF-e.
+configurações próprias do site: origem e valor do preço do site por produto, a
+entrega própria por bairro e a camada de apresentação do site por produto.
+Pedidos pagos voltam ao Bling, que emite a NF-e.
+
+A camada de apresentação fica em tabelas próprias, separadas dos dados do Bling,
+e a sync do Bling não as lê nem as escreve. Ela permite override por campo de
+nome, descrição, descrição complementar e categorias exibidas, além de
+visibilidade na loja e destaque. Remover um override restaura o valor do Bling.
+Ela nunca altera produto, variação, estoque, peso, medidas, SKU ou GTIN vindos do
+Bling, e checkout e frete usam sempre os dados do Bling.
 
 ### II. O servidor é a autoridade
 O cliente nunca define preço, desconto, frete, estoque ou itens do pedido. Valem
@@ -74,4 +82,4 @@ ser resolvido na spec ou justificado no plano (seção de complexidade). Emendas
 são feitas por PR, com versão semântica: MAJOR remove ou redefine princípio,
 MINOR adiciona princípio ou seção, PATCH esclarece texto.
 
-**Version**: 1.0.1 | **Ratified**: 2026-10-18 | **Last Amended**: 2026-10-19
+**Version**: 1.1.0 | **Ratified**: 2026-10-18 | **Last Amended**: 2026-10-26
