@@ -135,7 +135,7 @@ async def mercado_pago_webhook(
         or payload.data.get("id") != provider_order_id
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Evento inválido."
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Evento inválido."
         )
     try:
         service.verify_webhook_signature(provider_order_id, x_signature, x_request_id)

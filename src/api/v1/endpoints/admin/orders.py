@@ -37,7 +37,7 @@ async def list_orders(
         start, end = period_bounds(created_from, created_to)
     except InvalidPeriodError:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=[
                 {
                     "type": "value_error",

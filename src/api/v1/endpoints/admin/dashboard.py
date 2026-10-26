@@ -29,7 +29,7 @@ async def dashboard_summary(
         summary = await service.summary(from_, to)
     except InvalidDashboardPeriodError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=[{"type": "value_error", "loc": ["query", exc.field], "msg": exc.message}],
         )
     return BaseResponse(data=summary)

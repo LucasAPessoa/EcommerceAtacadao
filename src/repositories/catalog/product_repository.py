@@ -107,18 +107,19 @@ class ProductRepository(BaseRepository[Product, ProductResponseSchema]):
     def _effective_category_exists(category_id: uuid.UUID) -> ColumnElement[bool]:
         """Produto pertence à categoria efetiva (pública: ativa e não excluída)."""
         public = and_(
-            Category.id == category_id,
             Category.deleted_at.is_(None),
             Category.is_active.is_(True),
         )
         site = exists().where(
             product_site_categories.c.product_id == Product.id,
             product_site_categories.c.category_id == category_id,
+            Category.id == product_site_categories.c.category_id,
             public,
         )
         bling = exists().where(
             product_category_table.c.product_id == Product.id,
             product_category_table.c.category_id == category_id,
+            Category.id == product_category_table.c.category_id,
             public,
         )
         locked = func.coalesce(ProductSitePresentation.categories_locked, false())
