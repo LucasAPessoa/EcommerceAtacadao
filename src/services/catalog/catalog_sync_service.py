@@ -7,6 +7,7 @@ interrupção. Preço só na criação; faixas de preço nunca são tocadas; nen
 """
 
 import logging
+import math
 import time
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -99,6 +100,18 @@ class _CycleAborted(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+def full_detail_interval(known_products: int) -> timedelta:
+    """Intervalo entre releituras completas, limitado pela cota diária de detalhes."""
+    quota_minutes = math.ceil(
+        known_products * 1440 / max(1, settings.CATALOG_SYNC_DAILY_DETAIL_BUDGET)
+    )
+    minutes = max(
+        settings.CATALOG_SYNC_INTERVAL_MINUTES,
+        min(settings.CATALOG_SYNC_FULL_DETAIL_HOURS * 60, quota_minutes),
+    )
+    return timedelta(minutes=minutes)
 
 
 def _utcnow() -> datetime:
@@ -323,8 +336,8 @@ class CatalogSyncService:
     ) -> CatalogSyncRun:
         now = _utcnow()
         state = self.state
-        full = state.last_full_detail_at is None or now - state.last_full_detail_at >= timedelta(
-            hours=settings.CATALOG_SYNC_FULL_DETAIL_HOURS
+        full = state.last_full_detail_at is None or now - state.last_full_detail_at >= (
+            full_detail_interval(await self.repository.count_bling_products())
         )
         since = None
         if not full and state.last_complete_cycle_at is not None:

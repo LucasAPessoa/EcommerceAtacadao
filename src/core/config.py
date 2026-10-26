@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     CATALOG_SYNC_TIME_BUDGET_SECONDS: float = Field(default=45, gt=0)
     CATALOG_SYNC_INTERVAL_MINUTES: int = Field(default=10, ge=1)
     CATALOG_SYNC_FULL_DETAIL_HOURS: int = Field(default=24, ge=1)
+    CATALOG_SYNC_DAILY_DETAIL_BUDGET: int = Field(default=40000, ge=1)
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

@@ -30,6 +30,7 @@ from sqlalchemy.pool import NullPool
 
 import src.models  # noqa: F401  (registra as tabelas)
 from src.core import crypto
+from src.core.config import settings
 from src.integrations.bling.catalog import BlingCatalogClient, format_changed_since
 from src.integrations.bling.client import BlingClient, RateLimiter
 from src.integrations.bling.errors import BlingRateLimitedError
@@ -60,6 +61,7 @@ from src.services.catalog.catalog_sync_service import (
     CatalogSyncService,
     JobResult,
     SliceResult,
+    full_detail_interval,
 )
 from src.services.integrations.bling_connection_service import BlingTokenProvider
 
@@ -983,3 +985,49 @@ async def test_daily_full_cycle_still_details_everything(
     run, details = await _calls_during(fake, factory)
     assert len(details) == 25
     assert not [e for e in run.errors if e["code"] == "filtro_alteracao_ignorado"]
+
+
+@pytest.mark.parametrize(
+    ("products", "minutes"),
+    [(0, 10), (40, 10), (2000, 72), (20000, 720), (40000, 1440), (500000, 1440)],
+)
+def test_full_detail_interval_follows_daily_quota(
+    monkeypatch: pytest.MonkeyPatch, products: int, minutes: int
+) -> None:
+    monkeypatch.setattr(settings, "CATALOG_SYNC_INTERVAL_MINUTES", 10)
+    monkeypatch.setattr(settings, "CATALOG_SYNC_FULL_DETAIL_HOURS", 24)
+    monkeypatch.setattr(settings, "CATALOG_SYNC_DAILY_DETAIL_BUDGET", 40000)
+    assert full_detail_interval(products) == timedelta(minutes=minutes)
+
+
+async def _age_full_detail(factory: Factory, minutes: int) -> None:
+    async with factory.begin() as session:
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(minutes=minutes)
+
+
+async def test_small_catalog_second_cycle_is_full_without_writes(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(fake, _many(25))
+    await _cycle(factory)
+    before = await _products(factory)
+    await _age_full_detail(factory, 11)
+    run, details = await _calls_during(fake, factory)
+    assert len(details) == 25
+    assert (run.created, run.updated, run.unchanged) == (0, 0, 25)
+    assert not [e for e in run.errors if e["code"] == "filtro_alteracao_ignorado"]
+    after = await _products(factory)
+    assert all(after[k].updated_at == before[k].updated_at for k in before)
+
+
+async def test_small_daily_budget_keeps_cycle_incremental(
+    factory: Factory, fake: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _bling(fake, _many(25))
+    await _cycle(factory)
+    monkeypatch.setattr(settings, "CATALOG_SYNC_DAILY_DETAIL_BUDGET", 1)
+    await _age_full_detail(factory, 11)
+    _, details = await _calls_during(fake, factory)
+    assert details == set()
