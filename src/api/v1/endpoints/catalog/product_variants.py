@@ -33,6 +33,7 @@ router = build_crud_router(
     },
     not_found_message="Variação do produto não encontrada.",
     read_only=True,
+    list_filters={"product_id": "Filtra pelo produto (UUID)."},
 )
 
 

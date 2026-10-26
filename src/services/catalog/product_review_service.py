@@ -30,9 +30,11 @@ class ProductReviewService:
         return await self.repository.create(data)
 
     async def list_reviews(
-        self, include_unapproved: bool = False
+        self, include_unapproved: bool = False, product_id: Optional[UUID] = None
     ) -> List[ProductReviewResponseSchema]:
-        return await self.repository.get_all(only_approved=not include_unapproved)
+        return await self.repository.get_all(
+            only_approved=not include_unapproved, product_id=product_id
+        )
 
     async def get_review_by_id(
         self, review_id: UUID, include_unapproved: bool = False

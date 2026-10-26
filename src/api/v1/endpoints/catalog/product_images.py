@@ -25,4 +25,8 @@ router = build_crud_router(
     },
     not_found_message="Imagem do produto não encontrada.",
     read_only=True,
+    list_filters={
+        "product_id": "Filtra pelo produto (UUID).",
+        "variant_id": "Filtra pela variação (UUID).",
+    },
 )

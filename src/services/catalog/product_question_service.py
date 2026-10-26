@@ -26,8 +26,12 @@ class ProductQuestionService:
         data["answer_text"] = None  # resposta é exclusiva de admin (PATCH)
         return await self.repository.create(data)
 
-    async def list_questions(self) -> List[ProductQuestionResponseSchema]:
-        return await self.repository.get_all()
+    async def list_questions(
+        self, product_id: Optional[UUID] = None
+    ) -> List[ProductQuestionResponseSchema]:
+        if product_id is None:
+            return await self.repository.get_all()
+        return await self.repository.get_by_product(product_id)
 
     async def get_question_by_id(
         self, question_id: UUID

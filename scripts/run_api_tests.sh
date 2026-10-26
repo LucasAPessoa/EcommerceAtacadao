@@ -82,7 +82,7 @@ done
 curl -fsS "$BLING_FAKE_URL/health" >/dev/null || { echo "timeout aguardando o Bling simulado" >&2; exit 1; }
 
 "${RUN[@]}" pytest -q \
-  tests/catalog/test_catalog.py \
+  tests/catalog/test_catalog.py tests/catalog/test_product_filters.py \
   tests/integrations/test_bling_connection.py \
   tests/identity/test_addresses.py tests/identity/test_auth.py tests/identity/test_users.py \
   tests/operations/test_shipping.py \
