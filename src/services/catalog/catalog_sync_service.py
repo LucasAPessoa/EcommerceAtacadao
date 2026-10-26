@@ -57,6 +57,8 @@ DETAIL_BATCH = 10
 MAX_RUN_ERRORS = 200
 MAX_BLOCK_ERRORS = 100
 SINCE_MARGIN = timedelta(minutes=10)
+IGNORED_FILTER_MIN_SEEN = 20
+IGNORED_FILTER_RATIO = 0.9
 PHASE_ORDER = (
     CatalogSyncPhaseEnum.CATEGORIES,
     CatalogSyncPhaseEnum.SCAN,
@@ -310,7 +312,10 @@ class CatalogSyncService:
     def _advance(self) -> None:
         index = PHASE_ORDER.index(self.state.phase)
         self.state.phase = PHASE_ORDER[index + 1]
-        keep = {k: self._cursor(k) for k in ("full", "since", "partial")}
+        keep = {
+            k: self._cursor(k)
+            for k in ("full", "since", "partial", "pass2_items", "ignored", "detailed")
+        }
         self.state.cursor = {**keep, "page": 1, "pos": 0, "last": 0, "pass": 1}
 
     async def _start_cycle(
@@ -335,6 +340,9 @@ class CatalogSyncService:
             "pos": 0,
             "last": 0,
             "pass": 1,
+            "pass2_items": 0,
+            "ignored": False,
+            "detailed": 0,
         }
         state.seen_bling_ids = []
         state.changed_bling_ids = []
@@ -446,6 +454,8 @@ class CatalogSyncService:
             states = await self.repository.product_states(ids)
             changed = list(self.state.changed_bling_ids)
             known = set(changed)
+            if scan_pass == 2:
+                self._set_cursor(pass2_items=self._cursor("pass2_items", 0) + len(ids))
             for item in result.items:
                 existing = states.get(item.id)
                 if scan_pass == 1:
@@ -462,16 +472,33 @@ class CatalogSyncService:
                     changed.append(item.id)
             if scan_pass == 1:
                 self.state.seen_bling_ids = [*self.state.seen_bling_ids, *ids]
+            elif not result.has_more and self._filter_ignored():
+                # Devolveu (quase) tudo: o Bling ignorou o filtro. Descarta a leva da 2ª passada
+                # (a releitura diária cobre as alterações) e avisa uma única vez.
+                changed = changed[: self._cursor("pass1_changed", 0)]
+                self._set_cursor(ignored=True)
+                self._add_error(
+                    None,
+                    "filtro_alteracao_ignorado",
+                    "Bling devolveu quase todos os produtos ao filtrar por alteração; "
+                    "alterações ficam para a releitura diária",
+                )
             self.state.changed_bling_ids = changed
             if result.has_more:
                 self._set_cursor(page=page + 1)
             elif scan_pass == 1 and not full and since is not None:
-                self._set_cursor(**{"pass": 2, "page": 1})
+                self._set_cursor(**{"pass": 2, "page": 1, "pass1_changed": len(changed)})
             else:
                 self._finish_scan(complete=True)
                 await self._checkpoint()
                 return True
             await self._checkpoint()
+
+    def _filter_ignored(self) -> bool:
+        seen = len(self.state.seen_bling_ids)
+        return seen > IGNORED_FILTER_MIN_SEEN and (
+            self._cursor("pass2_items", 0) >= IGNORED_FILTER_RATIO * seen
+        )
 
     def _finish_scan(self, *, complete: bool) -> None:
         seen = len(self.state.seen_bling_ids)
@@ -505,7 +532,7 @@ class CatalogSyncService:
                 if detail is not None:
                     await self._store_product(bling_id, detail)
             pos += len(fetched)
-            self._set_cursor(pos=pos)
+            self._set_cursor(pos=pos, detailed=self._cursor("detailed", 0) + len(fetched))
             await self._checkpoint()
         await self._release_price_blocks()
         return True
@@ -721,6 +748,13 @@ class CatalogSyncService:
             # só depois de o Bling listar algo (lista vazia nunca derruba o catálogo).
             if self.state.seen_bling_ids:
                 self.run.deactivated += await self.repository.deactivate_unlinked()
+        logger.info(
+            "catalog_sync_cycle full=%s pass2_items=%s detailed=%s seen=%s",
+            bool(self._cursor("full")),
+            self._cursor("pass2_items", 0),
+            self._cursor("detailed", 0),
+            len(self.state.seen_bling_ids),
+        )
         partial = bool(self._cursor("partial")) or not scan_complete or self.run.failed > 0
         await self._close(
             CatalogSyncRunStatusEnum.PARTIAL if partial else CatalogSyncRunStatusEnum.SUCCESS,
