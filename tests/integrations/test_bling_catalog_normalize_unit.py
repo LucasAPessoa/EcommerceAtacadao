@@ -138,6 +138,11 @@ def test_image_identity_keeps_meaningful_query_params() -> None:
     assert image_identity(f"{bling}?AWSAccessKeyId=K&Expires=1&Signature=s") == bling
 
 
+def test_category_id_zero_means_no_category() -> None:
+    assert normalize_product(_simple(categoria={"id": 0})).category_id is None
+    assert normalize_product(_simple(categoria={"id": 77})).category_id == 77
+
+
 def test_missing_id_or_name_is_a_format_error() -> None:
     with pytest.raises(BlingCatalogFormatError):
         normalize_product({"nome": "sem id"})

@@ -273,7 +273,8 @@ def normalize_product(raw: dict[str, Any]) -> BlingProduct:
         "format": _clean(raw.get("formato"), 10),
         "status": "A" if active else "I",
         "active": active,
-        "category_id": _int(category.get("id")) if isinstance(category, dict) else None,
+        # O Bling devolve {"id": 0} para produto sem categoria: tratar como ausência.
+        "category_id": (_int(category.get("id")) or None) if isinstance(category, dict) else None,
     }
     return BlingProduct(
         **product,
