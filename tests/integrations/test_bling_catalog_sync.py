@@ -921,6 +921,38 @@ async def test_incomplete_scan_does_not_deactivate_legacy_products(
         assert legacy.is_active is True
 
 
+async def _category_flags(factory: Factory) -> dict[str, bool]:
+    async with factory() as session:
+        rows = (await session.execute(select(Category.name, Category.is_active))).all()
+    return dict(rows)
+
+
+async def test_legacy_categories_deactivated_after_full_scan_bling_ones_intact(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    async with factory.begin() as session:
+        session.add(Category(name="Limpeza seed", is_active=True))
+        session.add(Category(name="Bling cat", bling_id=987, is_active=True))
+    await _imported(factory, fake, _product(1))
+    flags = await _category_flags(factory)
+    assert flags["Limpeza seed"] is False
+    assert flags["Bling cat"] is True
+    assert (await _runs(factory))[0].deactivated == 0
+
+
+async def test_legacy_categories_kept_on_empty_or_incomplete_scan(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    async with factory.begin() as session:
+        session.add(Category(name="Limpeza seed", is_active=True))
+    await _bling(fake, [_product(1)], {1: 5}, failures={"produtos:list:1": 503})
+    await _cycle(factory)
+    assert (await _category_flags(factory))["Limpeza seed"] is True
+    await _bling(fake, [])
+    await _cycle(factory)
+    assert (await _category_flags(factory))["Limpeza seed"] is True
+
+
 # ---------------------------------------------------- 2ª passada (filtro de alteração)
 
 OLD = "2020-01-01 00:00:00"
