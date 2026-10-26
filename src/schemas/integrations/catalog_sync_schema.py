@@ -73,7 +73,7 @@ class CatalogSyncCurrentRunSchema(CatalogSyncRunSchema):
     phase: Optional[str] = None
 
     @classmethod
-    def from_run(  # type: ignore[override]
+    def from_run(
         cls, run: CatalogSyncRun, phase: Optional[CatalogSyncPhaseEnum] = None
     ) -> "CatalogSyncCurrentRunSchema":
         return cls(**cls._fields(run), phase=phase.value if phase else None)
