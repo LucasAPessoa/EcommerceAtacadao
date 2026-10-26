@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     DateTime,
@@ -42,7 +43,7 @@ class Category(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "categories"
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
-    bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
+    bling_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, index=True)
 
     name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -59,7 +60,7 @@ class Product(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "products"
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
-    bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
+    bling_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, index=True)
     bling_content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     bling_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -111,7 +112,7 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     id: Mapped[uuid.UUID] = uuid_primary_key()
     product_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("products.id"))
 
-    bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
+    bling_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, index=True)
     bling_sku: Mapped[str] = mapped_column(String(100), unique=True)  # Variation code
     bling_stock_balance: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     variation_name: Mapped[str] = mapped_column(String(100))  # e.g., "Size:L;Color:Green"
@@ -146,7 +147,7 @@ class ProductListing(Base, TimestampMixin):
     __tablename__ = "product_listings"
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
-    bling_id: Mapped[Optional[int]] = mapped_column(Integer, unique=True, index=True)
+    bling_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, index=True)
     product_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("products.id"))
 
     title: Mapped[str] = mapped_column(String(255))
@@ -187,7 +188,7 @@ class ListingImage(Base, TimestampMixin):
         PGUUID(as_uuid=True), ForeignKey("product_listings.id")
     )
 
-    bling_id: Mapped[Optional[int]] = mapped_column(Integer)
+    bling_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     url: Mapped[str] = mapped_column(String(500))
     sort_order: Mapped[int] = mapped_column(
         Integer
