@@ -116,6 +116,9 @@ class Settings(BaseSettings):
     BLING_ORDER_STATUS_MAP: str = ""
     BLING_AUTH_BASE_URL: str = "https://www.bling.com.br/Api/v3"
     BLING_API_BASE_URL: str = "https://api.bling.com.br/Api/v3"
+    CATALOG_SYNC_TIME_BUDGET_SECONDS: float = Field(default=45, gt=0)
+    CATALOG_SYNC_INTERVAL_MINUTES: int = Field(default=10, ge=1)
+    CATALOG_SYNC_FULL_DETAIL_HOURS: int = Field(default=24, ge=1)
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

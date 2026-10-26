@@ -40,6 +40,16 @@ Tokens ficam criptografados (Fernet, `src/core/crypto.py`). Env novas, todas opc
 Testes de API usam o Bling simulado `tests/fakes/bling_fake.py` (sobe no
 `scripts/run_api_tests.sh`).
 
+Importação do catálogo (`src/services/catalog/catalog_sync_service.py`, leituras em
+`src/integrations/bling/catalog.py`, persistência em `catalog_sync_repository.py`): ciclo
+retomável `CATEGORIES -> SCAN -> DETAILS -> STOCK -> FINALIZE` em fatias limitadas por
+`CATALOG_SYNC_TIME_BUDGET_SECONDS` (45). Estado único `catalog_sync_state` com
+`FOR UPDATE SKIP LOCKED` (BUSY se ocupado), commit por lote e cursor persistido. Hash igual não
+escreve; preço do Bling só na criação; estoque = saldo menos reservas CONFIRMED de pedidos pagos
+sem `bling_registered_at`; desativação só com varredura completa e não vazia. Gatilho: job
+`POST /internal/jobs/catalog-sync` a cada `CATALOG_SYNC_INTERVAL_MINUTES` (10) ou botão do admin;
+`CATALOG_SYNC_FULL_DETAIL_HOURS` (24) força a releitura de todos os detalhes.
+
 Mantenha o fluxo `router -> service -> repository -> banco/integração`. Um router
 não deve calcular preço nem montar transação; um repository não deve decidir
 status HTTP.

@@ -4,12 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from src.core.db import DbSession
+from src.core.client_config import get_client_config
+from src.core.config import settings
+from src.core.db import AsyncSessionLocal, DbSession
 from src.core.sec import require_role
+from src.models.enums import CatalogSyncTriggerEnum
 from src.models.identity import User
+from src.repositories.catalog.catalog_sync_repository import CatalogSyncRepository
 from src.repositories.integrations.bling_connection_repository import BlingConnectionRepository
 from src.schemas.integrations.bling_schema import BlingStatusResponse
+from src.schemas.integrations.catalog_sync_schema import (
+    CatalogSyncCurrentRunSchema,
+    CatalogSyncRunsResponse,
+)
 from src.schemas.response_schema import BaseResponse
+from src.services.catalog.catalog_sync_service import CatalogSyncService, build_catalog_client
 from src.services.integrations.bling_connection_service import (
     BlingAlreadyConnectedError,
     BlingAlreadyDisconnectedError,
@@ -20,6 +29,8 @@ from src.services.integrations.bling_connection_service import (
 router = APIRouter(prefix="/integrations/bling", tags=["Bling"])
 
 NOT_CONFIGURED_DETAIL = "Integração com o Bling não configurada."
+# O disparo manual roda dentro da requisição do admin: fatia curta; o cron continua o ciclo.
+MANUAL_SLICE_BUDGET_SECONDS = 20.0
 
 
 class BlingConnectResponse(BaseModel):
@@ -82,3 +93,41 @@ async def disconnect_bling(
     except BlingAlreadyDisconnectedError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
     return BaseResponse(status="success", data=data)
+
+
+def get_catalog_sync_service(session: DbSession) -> CatalogSyncService:
+    # O cliente do Bling usa sessões curtas próprias para o token (sem tocar nesta sessão).
+    return CatalogSyncService(
+        CatalogSyncRepository(session),
+        build_catalog_client(AsyncSessionLocal),
+        budget_seconds=min(settings.CATALOG_SYNC_TIME_BUDGET_SECONDS, MANUAL_SLICE_BUDGET_SECONDS),
+    )
+
+
+@router.post("/catalog-sync", response_model=BaseResponse[CatalogSyncCurrentRunSchema])
+async def start_catalog_sync(
+    current_user: User = Depends(require_role(["admin"])),
+    service: CatalogSyncService = Depends(get_catalog_sync_service),
+):
+    """Pede um ciclo e executa uma fatia; se já há ciclo em andamento, devolve-o."""
+    if not get_client_config().bling_configured:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED_DETAIL)
+    result = await service.run_job(CatalogSyncTriggerEnum.MANUAL, current_user.id, force=True)
+    if result.status == "SKIPPED":
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Conexão com o Bling inativa")
+    data = await service.get_run_schema(result.run_id) if result.run_id else None
+    if data is None:  # outra invocação detém o estado: devolve o ciclo corrente
+        data = (await service.list_runs(1)).current
+    if data is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Importação já em andamento")
+    return BaseResponse(status="success", data=data)
+
+
+@router.get("/catalog-sync/runs", response_model=BaseResponse[CatalogSyncRunsResponse])
+async def list_catalog_sync_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(require_role(["admin"])),
+    service: CatalogSyncService = Depends(get_catalog_sync_service),
+):
+    """Ciclo corrente e histórico recente (no máximo 50 erros por execução; sem tokens)."""
+    return BaseResponse(status="success", data=await service.list_runs(limit))
