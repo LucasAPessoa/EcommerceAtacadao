@@ -18,6 +18,8 @@ SOME_ID = uuid.uuid4()
 ROUTES = [
     ("GET", f"{ADMIN}/products"),
     ("GET", f"{ADMIN}/products/{SOME_ID}"),
+    ("PATCH", f"{ADMIN}/products/{SOME_ID}/presentation"),
+    ("PATCH", f"{ADMIN}/products/presentation"),
 ]
 
 

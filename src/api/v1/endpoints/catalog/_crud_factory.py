@@ -47,6 +47,7 @@ def build_crud_router(
     hide_unapproved_from_public: bool = False,
     read_only: bool = False,
     list_filters: Optional[dict] = None,
+    bool_list_filters: Optional[dict] = None,
 ) -> APIRouter:
     """
     verbs: dict com os nomes reais dos métodos do service, ex.:
@@ -73,6 +74,8 @@ def build_crud_router(
     list_filters: dict[nome do parâmetro de query -> descrição]. Cada um é um
         UUID opcional (inválido -> 422) repassado como kwarg ao método "list" do
         service, só quando informado; sem filtro a chamada é a de antes.
+
+    bool_list_filters: igual a list_filters, mas cada parâmetro é um bool opcional.
     """
     router = APIRouter(prefix=prefix, tags=tags)  # type: ignore[arg-type]  # list[str] aceito pelo FastAPI (tags: list[str | Enum])
 
@@ -113,6 +116,14 @@ def build_crud_router(
             annotation=Optional[UUID],
         )
         for name, description in (list_filters or {}).items()
+    ] + [
+        inspect.Parameter(
+            name,
+            inspect.Parameter.KEYWORD_ONLY,
+            default=Query(None, description=description),
+            annotation=Optional[bool],
+        )
+        for name, description in (bool_list_filters or {}).items()
     ]
 
     async def _list_filters(**kwargs) -> dict:
