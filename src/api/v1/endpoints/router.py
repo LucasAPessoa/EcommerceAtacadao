@@ -3,6 +3,7 @@ from fastapi import APIRouter
 # ==========================================
 # 1. IMPORTAÇÃO DOS DOMÍNIOS (Agregadores)
 # ==========================================
+from src.api.v1.endpoints.admin.router import admin_router
 from src.api.v1.endpoints.catalog.router import catalog_router
 from src.api.v1.endpoints.identity.addresses import router as addresses_router
 
@@ -42,3 +43,6 @@ api_router.include_router(internal_jobs_router)
 
 # --- INTEGRAÇÕES: Bling (conexão da conta) ---
 api_router.include_router(bling_router)
+
+# --- PORTAL ADMIN (somente role admin) ---
+api_router.include_router(admin_router)

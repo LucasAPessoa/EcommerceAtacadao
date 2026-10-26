@@ -46,6 +46,8 @@ crud_router = build_crud_router(
     not_found_message="Produto não encontrado, che.",
     supports_pagination=True,
     read_only=True,
+    list_filters={"category_id": "Filtra pelas categorias efetivas do produto (UUID)."},
+    bool_list_filters={"featured": "true lista só os produtos destacados (e visíveis)."},
 )
 
 router.include_router(crud_router)

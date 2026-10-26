@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     STORE_POSTING_AGENCY_ID: str = ""
     STORE_SHIPPING_MARGIN_PERCENT: str = ""
     STORE_HANDLING_DAYS: str = ""
+    LOW_STOCK_THRESHOLD: str = ""
     MELHOR_ENVIO_TOKEN: SecretStr = Field(default=SecretStr(""), repr=False)
     MELHOR_ENVIO_USER_AGENT: str = ""
     MERCADO_PAGO_ACCESS_TOKEN: SecretStr = Field(default=SecretStr(""), repr=False)

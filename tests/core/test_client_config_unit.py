@@ -104,6 +104,18 @@ def test_defaults_and_full_config() -> None:
     assert str(config.shipping.margin_percent) == "12.5"
 
 
+def test_low_stock_threshold_default_and_override() -> None:
+    assert build_client_config(_settings()).low_stock_threshold == 5
+    assert build_client_config(_settings(LOW_STOCK_THRESHOLD="0")).low_stock_threshold == 0
+    assert build_client_config(_settings(LOW_STOCK_THRESHOLD="12")).low_stock_threshold == 12
+
+
+def test_low_stock_threshold_error_is_aggregated() -> None:
+    with pytest.raises(ClientConfigError) as exc:
+        build_client_config(_settings(LOW_STOCK_THRESHOLD="x", STORE_HANDLING_DAYS="y"))
+    assert {n for n, _ in exc.value.errors} >= {"LOW_STOCK_THRESHOLD", "STORE_HANDLING_DAYS"}
+
+
 @pytest.mark.parametrize(
     ("env", "name", "reason"),
     [
@@ -130,6 +142,8 @@ def test_defaults_and_full_config() -> None:
         ({"STORE_SHIPPING_MARGIN_PERCENT": "abc"}, "STORE_SHIPPING_MARGIN_PERCENT", "decimal"),
         ({"STORE_HANDLING_DAYS": "-2"}, "STORE_HANDLING_DAYS", "inteiro"),
         ({"STORE_HANDLING_DAYS": "1.5"}, "STORE_HANDLING_DAYS", "inteiro"),
+        ({"LOW_STOCK_THRESHOLD": "-1"}, "LOW_STOCK_THRESHOLD", "inteiro"),
+        ({"LOW_STOCK_THRESHOLD": "abc"}, "LOW_STOCK_THRESHOLD", "inteiro"),
         ({"STORE_NAME": "x" * 121}, "STORE_NAME", "120"),
         (
             {k: v for k, v in SENDER_ENV.items() if k != "STORE_SENDER_CITY"},

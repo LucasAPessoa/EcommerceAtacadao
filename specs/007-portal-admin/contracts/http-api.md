@@ -10,6 +10,7 @@ Base `/api/v1`. Envelope `BaseResponse` (`status`, `message`, `data`, `errors`),
 - **Autorização:** todas as rotas `/admin/*` exigem `Authorization: Bearer` de usuário com papel `admin`. Sem token → 401; sem papel → 403, antes de qualquer leitura ou gravação.
 - **Paginação:** `skip` ≥ 0 (padrão 0); `limit` de 1 a 100 (padrão 25). Fora dos limites → 422.
 - **Dinheiro:** strings decimais com 2 casas (ex.: `"129.90"`).
+- **Erros:** 422 segue o formato padrão do FastAPI (`detail[]` com `loc` e `msg`). 400, 404 e 409 trazem `detail` em string, legível para o usuário.
 - **Datas:** ISO-8601. Filtros de período usam datas `YYYY-MM-DD` interpretadas em `America/Sao_Paulo`, inclusivas.
 
 ## Produtos
@@ -96,7 +97,8 @@ Corpo parcial; só as chaves enviadas mudam.
 - 200 `data` = mesmo formato de `presentation` do detalhe.
 - 400: categoria inexistente.
 - 404: produto.
-- 422: validação, com `errors[]` por campo (`loc`, `msg`).
+- 422: validação, com `detail[]` por campo (`loc`, `msg`).
+- Corpo vazio (`{}`) responde 200 sem gravar. `value` passa por `trim` antes de gravar. `category_ids` repetidos são deduplicados.
 
 ### `PATCH /admin/products/presentation`
 Ação em lote.
@@ -109,7 +111,7 @@ Ação em lote.
 - 1 a 100 IDs.
 - Ao menos uma das chaves `visible` e `featured`.
 - Transação única.
-- IDs inexistentes → 404 listando-os, e nada é gravado.
+- IDs inexistentes → 404 com `detail` listando-os (ex.: `"Produtos não encontrados: <id>, <id>"`), e nada é gravado.
 
 **200 `data`:** `{ "updated": 3 }`.
 
