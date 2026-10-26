@@ -97,3 +97,25 @@ class BlingConnectionEventEnum(str, enum.Enum):
     RECONNECT_REQUIRED = "RECONNECT_REQUIRED"
     DISCONNECTED = "DISCONNECTED"
     CONNECT_REJECTED = "CONNECT_REJECTED"
+
+
+class CatalogSyncPhaseEnum(str, enum.Enum):
+    IDLE = "IDLE"
+    CATEGORIES = "CATEGORIES"
+    SCAN = "SCAN"
+    DETAILS = "DETAILS"
+    STOCK = "STOCK"
+    FINALIZE = "FINALIZE"
+
+
+class CatalogSyncTriggerEnum(str, enum.Enum):
+    SCHEDULED = "SCHEDULED"
+    MANUAL = "MANUAL"
+
+
+class CatalogSyncRunStatusEnum(str, enum.Enum):
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"

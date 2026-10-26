@@ -110,6 +110,7 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     status: Mapped[OrderStatusEnum] = mapped_column(
         SQLEnum(OrderStatusEnum), default=OrderStatusEnum.PENDING_PAYMENT
     )
+    bling_registered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="orders")
     items: Mapped[List["OrderItem"]] = relationship(back_populates="order")

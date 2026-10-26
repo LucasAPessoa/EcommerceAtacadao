@@ -16,6 +16,9 @@ from .catalog import (
     ProductVariant,
 )
 
+# Domínio de Sincronização do Catálogo (Bling)
+from .catalog_sync import CatalogSyncRun, CatalogSyncState
+
 # Domínio de Identidade (Roles, Users, Auth, Addresses)
 from .identity import Address, RefreshToken, Role, User
 
@@ -63,4 +66,6 @@ __all__ = [
     "BlingConnection",
     "BlingAuthorizationAttempt",
     "BlingConnectionEvent",
+    "CatalogSyncState",
+    "CatalogSyncRun",
 ]
