@@ -160,7 +160,11 @@ async def list_products(
     rows = []
     for product in _config["products"]:
         changed = product.get("dataAlteracao")
-        if dataAlteracaoInicial and not (changed and changed >= dataAlteracaoInicial):
+        if (
+            dataAlteracaoInicial
+            and not _config.get("ignore_changed_filter")
+            and not (changed and changed >= dataAlteracaoInicial)
+        ):
             continue
         if situacao and product.get("situacao", "A") != situacao:
             continue

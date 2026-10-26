@@ -9,10 +9,11 @@ Nunca registra token nem corpo de resposta.
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit
+from zoneinfo import ZoneInfo
 
 from src.integrations.bling.client import BlingClient
 from src.integrations.bling.errors import BlingError
@@ -24,6 +25,14 @@ CATEGORIES_PATH = "/categorias/produtos"
 PRODUCTS_PATH = "/produtos"
 BALANCES_PATH = "/estoques/saldos"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+_BLING_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+def format_changed_since(value: datetime) -> str:
+    """UTC (naive ou aware) -> horário de São Paulo, o fuso em que o Bling lê o filtro."""
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return aware.astimezone(_BLING_TZ).strftime(_DATE_FORMAT)
+
 
 INCOMPLETE_WEIGHT = "incompleto_peso"
 INCOMPLETE_DIMENSIONS = "incompleto_medidas"
@@ -370,7 +379,7 @@ class BlingCatalogClient:
     ) -> BlingProductPage:
         params: dict[str, Any] = {"pagina": page, "limite": PAGE_SIZE}
         if changed_since is not None:
-            params["dataAlteracaoInicial"] = changed_since.strftime(_DATE_FORMAT)
+            params["dataAlteracaoInicial"] = format_changed_since(changed_since)
         rows = _rows(await self.client.request("GET", PRODUCTS_PATH, params=params))
         items = []
         for row in rows:

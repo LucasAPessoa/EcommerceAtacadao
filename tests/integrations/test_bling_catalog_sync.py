@@ -30,7 +30,7 @@ from sqlalchemy.pool import NullPool
 
 import src.models  # noqa: F401  (registra as tabelas)
 from src.core import crypto
-from src.integrations.bling.catalog import BlingCatalogClient
+from src.integrations.bling.catalog import BlingCatalogClient, format_changed_since
 from src.integrations.bling.client import BlingClient, RateLimiter
 from src.integrations.bling.errors import BlingRateLimitedError
 from src.models.base import Base
@@ -917,3 +917,69 @@ async def test_incomplete_scan_does_not_deactivate_legacy_products(
             await session.execute(select(Product).where(Product.name == "Seed legado"))
         ).scalar_one()
         assert legacy.is_active is True
+
+
+# ---------------------------------------------------- 2ª passada (filtro de alteração)
+
+OLD = "2020-01-01 00:00:00"
+
+
+def test_changed_since_is_sent_in_sao_paulo_time() -> None:
+    assert format_changed_since(datetime(2026, 10, 26, 5, 20)) == "2026-10-26 02:20:00"
+
+
+def _detail_ids(calls: list[dict[str, Any]]) -> set[str]:
+    return {c["path"] for c in calls if c["path"].startswith("/catalogo/produtos:detail:")}
+
+
+async def _calls_during(
+    fake: httpx.AsyncClient, factory: Factory
+) -> tuple[CatalogSyncRun, set[str]]:
+    before = len((await fake.get("/__control/calls")).json())
+    run = await _cycle(factory)
+    return run, _detail_ids((await fake.get("/__control/calls")).json()[before:])
+
+
+def _many(n: int) -> list[dict[str, Any]]:
+    return [_product(i, f"P{i}", changed=OLD) for i in range(1, n + 1)]
+
+
+async def test_ignored_filter_skips_unchanged_details_and_warns_once(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(fake, _many(25))
+    await _cycle(factory)
+    await fake.post("/__control/config", json={"ignore_changed_filter": True})
+    run, details = await _calls_during(fake, factory)
+    assert details == set()
+    assert [e["code"] for e in run.errors].count("filtro_alteracao_ignorado") == 1
+    assert run.unchanged == 25
+
+
+async def test_respected_filter_details_only_changed(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    products = _many(25)
+    await _bling(fake, products)
+    await _cycle(factory)
+    products[3] = _product(4, "P4 novo", changed=_now())
+    await _bling(fake, products)
+    run, details = await _calls_during(fake, factory)
+    assert details == {f"/catalogo/produtos:detail:{4 + BIG}"}
+    assert run.updated == 1
+    assert not [e for e in run.errors if e["code"] == "filtro_alteracao_ignorado"]
+
+
+async def test_daily_full_cycle_still_details_everything(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(fake, _many(25))
+    await _cycle(factory)
+    await fake.post("/__control/config", json={"ignore_changed_filter": True})
+    async with factory.begin() as session:
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(days=2)
+    run, details = await _calls_during(fake, factory)
+    assert len(details) == 25
+    assert not [e for e in run.errors if e["code"] == "filtro_alteracao_ignorado"]
