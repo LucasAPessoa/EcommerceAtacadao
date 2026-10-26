@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import selectinload
 from sqlalchemy.pool import NullPool
 
 import src.models  # noqa: F401  (registra as tabelas)
@@ -638,6 +639,56 @@ async def test_price_blocked_product_is_not_reread_or_rewritten(
     assert after_variant.updated_at == before_variant.updated_at
     assert after_variant.last_bling_sync == before_variant.last_bling_sync
     assert after_variant.is_active is False
+
+
+async def test_unknown_category_warns_once_and_is_not_reread_or_rewritten(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(fake, [_product(1, category=999), _product(2, "Feijão")], {1: 5, 2: 5})
+    first = await _cycle(factory)
+    assert (first.created, first.failed, first.blocked) == (2, 0, 0)
+    warnings = [e for e in first.errors if e["code"] == "categoria_desconhecida"]
+    assert [w["bling_id"] for w in warnings] == [1 + BIG]
+    assert "999" in warnings[0]["message"]
+    before = (await _products(factory))[1]
+    assert before.bling_content_hash is not None
+
+    def detail_calls(calls: list[dict[str, Any]]) -> int:
+        return sum(1 for c in calls if c["path"] == f"/catalogo/produtos:detail:{1 + BIG}")
+
+    calls_before = detail_calls((await fake.get("/__control/calls")).json())
+    second = await _cycle(factory)
+    assert (second.created, second.updated, second.failed) == (0, 0, 0)
+    assert detail_calls((await fake.get("/__control/calls")).json()) == calls_before
+    assert (await _products(factory))[1].updated_at == before.updated_at
+
+
+async def test_late_category_links_without_rewriting_product(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(fake, [_product(1, category=999)], {1: 5})
+    await _cycle(factory)
+    before = (await _products(factory))[1]
+    config = {
+        "products": [_product(1, category=999)],
+        "categories": [{"id": 1, "descricao": "Mercearia"}, {"id": 999, "descricao": "Nova"}],
+        "balances": {str(1 + BIG): 5},
+        "catalog_failures": {},
+    }
+    assert (await fake.post("/__control/config", json=config)).status_code == 200
+    async with factory.begin() as session:
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(days=2)
+    run = await _cycle(factory)
+    assert (run.created, run.updated, run.failed) == (0, 1, 0)
+    async with factory() as session:
+        product = await session.get(Product, before.id, options=[selectinload(Product.categories)])
+        assert product is not None
+        assert [c.bling_id for c in product.categories] == [999]
+        assert product.bling_content_hash == before.bling_content_hash
+        assert product.name == before.name
+    assert (await _products(factory))[1].updated_at == before.updated_at
 
 
 # ------------------------------------------------------------------ US3: gatilho (T013/T015)

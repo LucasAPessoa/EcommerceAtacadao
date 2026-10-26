@@ -527,6 +527,16 @@ class CatalogSyncService:
             released.add(product.id)
         self.run.updated += len(released)
 
+    def _unknown_category(self, detail: BlingProduct) -> None:
+        """Aviso (não é falha nem bloqueio); limitado como os bloqueios."""
+        warned = sum(1 for e in self.run.errors if e["code"] == "categoria_desconhecida")
+        if warned < MAX_BLOCK_ERRORS:
+            self._add_error(
+                detail.bling_id,
+                "categoria_desconhecida",
+                f"categoria {detail.category_id} não existe localmente; produto sem categoria",
+            )
+
     def _fail(self, bling_id: int, code: str, message: str) -> None:
         self.run.failed += 1
         self._add_error(bling_id, code, message)
@@ -579,11 +589,22 @@ class CatalogSyncService:
         if product is not None and product.bling_content_hash == detail.content_hash:
             # FR-002: hash igual, nenhuma escrita de catálogo; só renova as URLs assinadas (R7).
             await self._refresh_image_urls(product, detail)
+            if detail.category_id and all(
+                c.bling_id != detail.category_id for c in product.categories
+            ):
+                # Categoria antes desconhecida: religa só com consulta local (sem HTTP/reescrita).
+                late = await repo.get_category_by_bling_id(detail.category_id)
+                if late is not None:
+                    product.categories = [late]
+                    await repo.flush()
+                    return "updated", [], product.is_active
+                self._unknown_category(detail)
             return "unchanged", [], product.is_active
         category = (
             await repo.get_category_by_bling_id(detail.category_id) if detail.category_id else None
         )
-        category_missing = detail.category_id is not None and category is None
+        if detail.category_id and category is None:
+            self._unknown_category(detail)
         now = _utcnow()
         outcome = "updated"
         if product is None:
@@ -641,9 +662,9 @@ class CatalogSyncService:
             synced.append((variant, item.images))
         sellable = detail.active and any(v.is_active for v, _ in synced)
         product.is_active = sellable
-        # Categoria desconhecida: sem hash, o próximo ciclo detalha de novo. Bloqueio por preço
-        # mantém o hash real; a liberação é reavaliada sem HTTP (`_release_price_blocks`).
-        product.bling_content_hash = None if category_missing else detail.content_hash
+        # Hash sempre real (FR-002): categoria desconhecida só avisa; é religada sem HTTP quando
+        # surgir. Bloqueio por preço também mantém o hash (`_release_price_blocks`).
+        product.bling_content_hash = detail.content_hash
         product.inventory_raw = (
             {PRICE_BLOCKED_KEY: sorted(price_blocked)} if price_blocked else None
         )
