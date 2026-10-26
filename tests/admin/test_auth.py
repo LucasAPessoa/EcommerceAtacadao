@@ -24,6 +24,8 @@ ROUTES = [
     ("GET", f"{ADMIN}/orders/{SOME_ID}"),
     ("GET", f"{ADMIN}/dashboard/summary"),
     ("GET", f"{ADMIN}/bling/pending"),
+    ("GET", f"{ADMIN}/moderation/reviews"),
+    ("GET", f"{ADMIN}/moderation/questions"),
 ]
 
 
