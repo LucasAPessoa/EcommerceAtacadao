@@ -34,6 +34,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "categories": [],
     "balances": {},
     "catalog_failures": {},
+    # Imagens como links S3 assinados do Bling real: Signature/Expires mudam a cada leitura.
+    "sign_images": False,
 }
 
 _config: dict[str, Any] = {}
@@ -175,13 +177,29 @@ async def list_products(
     return {"data": _paginate(rows, pagina, limite)}
 
 
+def _signed(product: dict[str, Any]) -> dict[str, Any]:
+    """Cópia do detalhe com cada link de imagem assinado de novo (como o S3 do Bling)."""
+    signed = copy.deepcopy(product)
+    nodes = [signed, *(v for v in signed.get("variacoes") or [] if isinstance(v, dict))]
+    for node in nodes:
+        images = ((node.get("midia") or {}).get("imagens")) or {}
+        for group in ("externas", "internas"):
+            for entry in images.get(group) or []:
+                n = next(_counter)
+                entry["link"] = (
+                    f"{entry['link'].split('?', 1)[0]}?AWSAccessKeyId=AKIAFAKE"
+                    f"&Expires={1_800_000_000 + n}&Signature=sig{n}"
+                )
+    return signed
+
+
 @app.get("/Api/v3/produtos/{product_id}")
 async def get_product(request: Request, product_id: int):
     if failure := _catalog_guard(request, f"produtos:detail:{product_id}"):
         return failure
     for product in _config["products"]:
         if product["id"] == product_id:
-            return {"data": product}
+            return {"data": _signed(product) if _config["sign_images"] else product}
     return JSONResponse({"error": {"type": "RESOURCE_NOT_FOUND", "message": "nf"}}, 404)
 
 

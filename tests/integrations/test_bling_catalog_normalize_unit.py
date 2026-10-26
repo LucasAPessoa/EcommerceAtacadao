@@ -9,6 +9,7 @@ import pytest
 from src.integrations.bling.catalog import (
     BlingCatalogFormatError,
     available_stock,
+    image_identity,
     normalize_product,
 )
 
@@ -110,6 +111,31 @@ def test_hash_is_stable_and_sensitive_to_content_but_not_price() -> None:
     other_image["midia"]["imagens"]["externas"][0]["link"] = "https://img/z.jpg"
     assert normalize_product(other_image).content_hash != base
     assert normalize_product(_simple(situacao="I")).content_hash != base
+
+
+def _signed(sig: str) -> dict[str, Any]:
+    url = f"https://orgbling.s3.amazonaws.com/ab/ab?AWSAccessKeyId=K&Expires=1&Signature={sig}"
+    return _simple(id=16_724_017_605, midia={"imagens": {"externas": [{"link": url}]}})
+
+
+def test_hash_ignores_signed_image_query_but_not_image_identity() -> None:
+    first, second = normalize_product(_signed("s1")), normalize_product(_signed("s2"))
+    assert first.variants[0].images != second.variants[0].images  # URL completa preservada
+    assert first.content_hash == second.content_hash
+    other = _signed("s1")
+    other["midia"]["imagens"]["externas"][0]["link"] = "https://orgbling.s3.amazonaws.com/cd/cd?a=b"
+    assert normalize_product(other).content_hash != first.content_hash
+    assert first.bling_id == 16_724_017_605
+
+
+def test_image_identity_keeps_meaningful_query_params() -> None:
+    signed = "https://s3.example/a.jpg?X-Amz-Signature=x&X-Amz-Date=1&size=large"
+    assert image_identity(signed) == "https://s3.example/a.jpg?size=large"
+    assert image_identity("https://img/foto.php?id=1") != image_identity(
+        "https://img/foto.php?id=2"
+    )
+    bling = "https://orgbling.s3.amazonaws.com/ab/ab"
+    assert image_identity(f"{bling}?AWSAccessKeyId=K&Expires=1&Signature=s") == bling
 
 
 def test_missing_id_or_name_is_a_format_error() -> None:

@@ -64,6 +64,10 @@ from src.services.integrations.bling_connection_service import BlingTokenProvide
 
 Factory = async_sessionmaker[AsyncSession]
 
+# Ids reais do Bling têm 11 dígitos (> 2^31): os helpers somam este deslocamento aos ids
+# pequenos usados nos testes (produto, variação, saldo, falha simulada) e o subtraem na leitura.
+BIG = 16_724_017_600
+
 
 def _env(name: str) -> str:
     value = os.environ.get(name)
@@ -136,8 +140,9 @@ def _product(
     category: Optional[int] = 1,
     changed: Optional[str] = None,
 ) -> dict[str, Any]:
+    shifted = [{**entry, "id": entry["id"] + BIG} for entry in variations or []]
     return {
-        "id": bling_id,
+        "id": bling_id + BIG,
         "nome": name,
         "codigo": f"P{bling_id}",
         "preco": price,
@@ -147,13 +152,18 @@ def _product(
         "dimensoes": {"largura": 20, "altura": 30, "profundidade": 10},
         "categoria": {"id": category} if category else None,
         "midia": {"imagens": {"externas": [{"link": u} for u in images]}},
-        "variacoes": variations or [],
+        "variacoes": shifted,
         "dataAlteracao": changed,
     }
 
 
 def _now() -> str:
     return (datetime.utcnow() + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _shift_failure(key: str) -> str:
+    head, _, tail = key.rpartition(":")
+    return f"{head}:{int(tail) + BIG}" if key.startswith("produtos:detail:") else key
 
 
 async def _bling(
@@ -165,8 +175,8 @@ async def _bling(
     config = {
         "products": products,
         "categories": [{"id": 1, "descricao": "Mercearia"}],
-        "balances": {str(k): v for k, v in (balances or {}).items()},
-        "catalog_failures": failures or {},
+        "balances": {str(k + BIG): v for k, v in (balances or {}).items()},
+        "catalog_failures": {_shift_failure(k): v for k, v in (failures or {}).items()},
     }
     assert (await fake.post("/__control/config", json=config)).status_code == 200
 
@@ -201,13 +211,13 @@ async def _cycle(factory: Factory, **kwargs: Any) -> CatalogSyncRun:
 async def _products(factory: Factory) -> dict[int, Product]:
     async with factory() as session:
         rows = (await session.execute(select(Product))).scalars().all()
-        return {p.bling_id: p for p in rows if p.bling_id is not None}
+        return {p.bling_id - BIG: p for p in rows if p.bling_id is not None}
 
 
 async def _variants(factory: Factory) -> dict[int, ProductVariant]:
     async with factory() as session:
         rows = (await session.execute(select(ProductVariant))).scalars().all()
-        return {v.bling_id: v for v in rows if v.bling_id is not None}
+        return {v.bling_id - BIG: v for v in rows if v.bling_id is not None}
 
 
 # ------------------------------------------------------------------ US1
@@ -263,7 +273,7 @@ async def test_incomplete_product_is_saved_but_not_for_sale(
     run = await _cycle(factory)
     assert (run.created, run.blocked) == (1, 1)
     assert [e["code"] for e in run.errors] == ["incompleto_peso"]
-    assert run.errors[0]["bling_id"] == 1
+    assert run.errors[0]["bling_id"] == 1 + BIG
     assert (await _products(factory))[1].is_active is False
     assert (await _variants(factory))[1].is_active is False
 
@@ -408,7 +418,7 @@ async def test_product_error_does_not_stop_the_cycle(
     assert run.status == CatalogSyncRunStatusEnum.PARTIAL
     assert (run.created, run.failed) == (2, 1)
     assert set(await _products(factory)) == {1, 3}
-    assert run.errors[0]["bling_id"] == 2
+    assert run.errors[0]["bling_id"] == 2 + BIG
 
 
 async def test_cycle_resumes_from_cursor_without_duplicates(
@@ -602,7 +612,7 @@ async def test_block_errors_do_not_exhaust_error_list(
     assert run.blocked == 105
     blocks = [e for e in run.errors if e["code"].startswith("incompleto_")]
     assert len(blocks) == 100
-    assert any(e["code"] == "leitura_detalhe" and e["bling_id"] == 500 for e in run.errors)
+    assert any(e["code"] == "leitura_detalhe" and e["bling_id"] == 500 + BIG for e in run.errors)
 
 
 async def test_price_blocked_product_is_not_reread_or_rewritten(
@@ -614,7 +624,7 @@ async def test_price_blocked_product_is_not_reread_or_rewritten(
     before_variant = (await _variants(factory))[1]
 
     def detail_calls(calls: list[dict[str, Any]]) -> int:
-        return sum(1 for c in calls if c["path"] == "/catalogo/produtos:detail:1")
+        return sum(1 for c in calls if c["path"] == f"/catalogo/produtos:detail:{1 + BIG}")
 
     calls_before = detail_calls((await fake.get("/__control/calls")).json())
     assert calls_before == 1
@@ -763,3 +773,96 @@ async def test_bling_429_is_retried_with_backoff(factory: Factory, fake: httpx.A
     with pytest.raises(BlingRateLimitedError):
         await BlingCatalogClient(client).list_products_page(1)
     assert len(waits) == 2 and waits[0] >= 1.0 and waits[1] >= 2.0
+
+
+# ------------------------------------------------------------------ endurecimento (issue #54)
+
+
+async def test_product_states_with_ids_beyond_int32(factory: Factory) -> None:
+    ids = [16_724_017_605 + n for n in range(3)] + [2**31, 2**31 - 1]
+    async with factory.begin() as session:
+        for n, bling_id in enumerate(ids):
+            session.add(
+                Product(bling_id=bling_id, name=f"P{n}", status="A", bling_content_hash="h")
+            )
+    async with factory() as session:
+        states = await CatalogSyncRepository(session).product_states([*ids, 16_724_017_999])
+    assert set(states) == set(ids)
+    assert all(state == ("A", False) for state in states.values())
+
+
+async def _image_urls(factory: Factory) -> dict[str, str]:
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(ProductVariant.bling_id, ProductImage.image_url).join(
+                    ProductVariant, ProductVariant.id == ProductImage.variant_id
+                )
+            )
+        ).all()
+    return {str(bling_id - BIG): url for bling_id, url in rows}
+
+
+async def test_signed_images_changing_each_read_cause_no_catalog_writes(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    link = "https://orgbling.s3.amazonaws.com/ab/ab"
+    await _bling(fake, [_product(1, images=(link,)), _product(2, "Feijão", images=(link + "2",))])
+    await fake.post("/__control/config", json={"sign_images": True})
+    first = await _cycle(factory)
+    assert (first.created, first.failed) == (2, 0)
+    before_urls = await _image_urls(factory)
+    before_products = await _products(factory)
+    before_variants = await _variants(factory)
+    async with factory() as session:
+        before_image_ids = set((await session.execute(select(ProductImage.id))).scalars())
+
+    # 2º ciclo completo (varredura diária): detalhes relidos, assinaturas novas.
+    async with factory.begin() as session:
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(days=2)
+    second = await _cycle(factory)
+    assert (second.created, second.updated, second.unchanged) == (0, 0, 2)
+
+    after_urls = await _image_urls(factory)
+    assert after_urls.keys() == before_urls.keys()
+    assert all(after_urls[k] != before_urls[k] for k in before_urls)  # renovadas no lugar
+    assert all(after_urls[k].startswith(link) for k in after_urls)
+    async with factory() as session:
+        assert set((await session.execute(select(ProductImage.id))).scalars()) == before_image_ids
+    after_products = await _products(factory)
+    after_variants = await _variants(factory)
+    for key, product in before_products.items():
+        assert after_products[key].updated_at == product.updated_at
+    for key, variant in before_variants.items():
+        assert after_variants[key].updated_at == variant.updated_at
+        assert after_variants[key].last_bling_sync == variant.last_bling_sync
+
+
+async def test_legacy_products_without_bling_id_are_deactivated_after_full_scan(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    async with factory.begin() as session:
+        session.add(Product(name="Seed legado", status="A", is_active=True))
+        session.add(Product(name="Seed já inativo", status="A", is_active=False))
+    await _imported(factory, fake, _product(1))
+    async with factory() as session:
+        rows = (await session.execute(select(Product.name, Product.is_active))).all()
+        assert dict(rows) == {"Seed legado": False, "Seed já inativo": False, "Arroz 5kg": True}
+    runs = await _runs(factory)
+    assert runs[0].deactivated == 1
+
+
+async def test_incomplete_scan_does_not_deactivate_legacy_products(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    async with factory.begin() as session:
+        session.add(Product(name="Seed legado", status="A", is_active=True))
+    await _bling(fake, [_product(1)], {1: 5}, failures={"produtos:list:1": 503})
+    await _cycle(factory)
+    async with factory() as session:
+        legacy = (
+            await session.execute(select(Product).where(Product.name == "Seed legado"))
+        ).scalar_one()
+        assert legacy.is_active is True

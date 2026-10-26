@@ -1,8 +1,8 @@
 """Leitura do catálogo do Bling: paginação, normalização e hash de conteúdo (spec 006).
 
 Todo formato do Bling (nomes de campos, estrutura de mídia, saldos) fica isolado aqui; o
-restante do sistema só conhece as dataclasses internas. Itens marcados [a validar] no
-research (R1, R2, R7) são confirmados na primeira importação real (T022/T023).
+restante do sistema só conhece as dataclasses internas. Comportamento real observado em
+research.md (R1, R2, R7).
 Nunca registra token nem corpo de resposta.
 """
 
@@ -12,12 +12,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from src.integrations.bling.client import BlingClient
 from src.integrations.bling.errors import BlingError
 
 PAGE_SIZE = 100
-BALANCE_BATCH_SIZE = 100  # [a validar] R1: tamanho máximo do lote em /estoques/saldos
+BALANCE_BATCH_SIZE = 100  # tamanho do lote em /estoques/saldos (R1)
 
 CATEGORIES_PATH = "/categorias/produtos"
 PRODUCTS_PATH = "/produtos"
@@ -172,7 +173,7 @@ def _is_active(raw: dict[str, Any], default: bool = True) -> bool:
 
 
 def _images(media: Any) -> tuple[str, ...]:
-    """Links de imagens: externas primeiro, depois internas [a validar R7: internas expiram?]."""
+    """Links de imagens: externas primeiro, depois internas (links S3 assinados, R7)."""
     images = media.get("imagens") if isinstance(media, dict) else None
     if not isinstance(images, dict):
         return ()
@@ -282,6 +283,23 @@ def normalize_product(raw: dict[str, Any]) -> BlingProduct:
     )
 
 
+# Parâmetros de URL pré-assinada (S3 v2/v4) que mudam a cada leitura do Bling (R7).
+_SIGNATURE_PARAMS = {"awsaccesskeyid", "expires", "signature"}
+
+
+def image_identity(url: str) -> str:
+    """Identidade da imagem = URL sem os parâmetros de assinatura S3 (mudam a cada leitura e
+    expiram em 7 dias, R7); demais parâmetros da query são mantidos."""
+    parts = urlsplit(url)
+    kept = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key.lower() not in _SIGNATURE_PARAMS and not key.lower().startswith("x-amz-")
+    ]
+    query = f"?{urlencode(kept)}" if kept else ""
+    return f"{parts.scheme}://{parts.netloc}{parts.path}{query}" if parts.netloc else url
+
+
 def content_hash(product: dict[str, Any], variants: list[BlingVariant]) -> str:
     """SHA-256 estável do conteúdo normalizado; exclui preço e saldo (R2, R6)."""
     payload = {
@@ -297,7 +315,7 @@ def content_hash(product: dict[str, Any], variants: list[BlingVariant]) -> str:
                 "height": v.height_cm,
                 "width": v.width_cm,
                 "length": v.length_cm,
-                "images": list(v.images),
+                "images": [image_identity(u) for u in v.images],
             }
             for v in sorted(variants, key=lambda v: v.bling_id)
         ],
@@ -307,7 +325,7 @@ def content_hash(product: dict[str, Any], variants: list[BlingVariant]) -> str:
 
 
 def _balance(entry: dict[str, Any]) -> Optional[tuple[int, int]]:
-    """(id do produto, saldo). [a validar R1] usa o saldo virtual, com o físico como alternativa."""
+    """(id do produto, saldo). R1: usa o saldo virtual, com o físico como alternativa."""
     product = entry.get("produto")
     product_id = _int(product.get("id") if isinstance(product, dict) else None)
     raw = entry.get("saldoVirtualTotal")
@@ -357,7 +375,7 @@ class BlingCatalogClient:
         for row in rows:
             product_id = _int(row.get("id"))
             if product_id is None or row.get("idProdutoPai"):
-                continue  # [a validar R1] variações listadas com idProdutoPai pertencem ao pai
+                continue  # R1: variações listadas com idProdutoPai pertencem ao pai
             items.append(BlingListItem(product_id, _is_active(row)))
         return BlingProductPage(tuple(items), len(rows) >= PAGE_SIZE)
 
