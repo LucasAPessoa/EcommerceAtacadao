@@ -17,6 +17,7 @@ from src.models.catalog import (
 )
 from src.models.catalog_presentation import ProductSitePresentation, product_site_categories
 from src.models.identity import User
+from src.repositories._like import escape_like
 from src.repositories.admin import _expressions as ex
 
 SORTS = ("name", "price", "stock", "updated_at")
@@ -45,10 +46,6 @@ class ProductDetailData:
     presentation: Optional[ProductSitePresentation]
     site_categories: list[Category]
     updated_by: Optional[User]
-
-
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _flag(expr: ColumnElement[bool], wanted: bool) -> ColumnElement[bool]:
@@ -104,7 +101,7 @@ class AdminProductRepository:
 
     def _apply_filters(self, stmt: Select[Any], f: ProductListFilters, agg: Any) -> Select[Any]:
         if f.q:
-            pattern = f"%{_escape_like(f.q.strip())}%"
+            pattern = f"%{escape_like(f.q.strip())}%"
             stmt = stmt.where(
                 or_(
                     ProductSitePresentation.name.ilike(pattern, escape="\\"),

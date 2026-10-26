@@ -8,6 +8,7 @@ from src.models.enums import OrderStatusEnum, TransactionStatusEnum
 from src.models.identity import User
 from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.sales.order_schema import OrderResponseSchema
+from src.services.sales.order_eligibility import is_cancelable
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class OrderService:
         await session.refresh(order, attribute_names=["status", "transactions"])
         for transaction in order.transactions:
             await session.refresh(transaction)
-        if order.status != OrderStatusEnum.PENDING_PAYMENT:
+        if not is_cancelable(order.status):
             await session.rollback()
             raise ValueError(
                 "Somente pedidos aguardando pagamento podem ser cancelados diretamente. "

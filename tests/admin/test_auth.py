@@ -20,6 +20,8 @@ ROUTES = [
     ("GET", f"{ADMIN}/products/{SOME_ID}"),
     ("PATCH", f"{ADMIN}/products/{SOME_ID}/presentation"),
     ("PATCH", f"{ADMIN}/products/presentation"),
+    ("GET", f"{ADMIN}/orders"),
+    ("GET", f"{ADMIN}/orders/{SOME_ID}"),
 ]
 
 

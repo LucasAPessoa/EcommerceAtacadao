@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
@@ -17,7 +18,7 @@ from src.models.enums import (
     StockReservationStatusEnum,
     TransactionStatusEnum,
 )
-from src.models.identity import Address
+from src.models.identity import Address, User
 from src.models.operations import PaymentReconciliation, Refund, Transaction
 from src.models.sales import (
     Cart,
@@ -28,8 +29,25 @@ from src.models.sales import (
     OrderStatusHistory,
     StockReservation,
 )
+from src.repositories._like import escape_like
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AdminOrderFilters:
+    statuses: list[OrderStatusEnum] = field(default_factory=list)
+    # Limites já convertidos para UTC naive: created_at >= start e created_at < end.
+    created_start: Optional[datetime] = None
+    created_end: Optional[datetime] = None
+    customer: Optional[str] = None
+
+
+@dataclass
+class AdminOrderDetailData:
+    order: Order
+    customer: User
+    changed_by_names: dict[UUID, str]
 
 
 class OrderRepository:
@@ -329,6 +347,73 @@ class OrderRepository:
         )
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    def _admin_filtered(self, stmt, f: AdminOrderFilters):
+        stmt = stmt.where(Order.deleted_at.is_(None))
+        if f.statuses:
+            stmt = stmt.where(Order.status.in_(f.statuses))
+        if f.created_start is not None:
+            stmt = stmt.where(Order.created_at >= f.created_start)
+        if f.created_end is not None:
+            stmt = stmt.where(Order.created_at < f.created_end)
+        if f.customer and f.customer.strip():
+            pattern = f"%{escape_like(f.customer.strip())}%"
+            stmt = stmt.where(
+                or_(
+                    User.full_name.ilike(pattern, escape="\\"),
+                    User.email.ilike(pattern, escape="\\"),
+                )
+            )
+        return stmt
+
+    async def list_admin(
+        self, filters: AdminOrderFilters, skip: int, limit: int
+    ) -> tuple[list[tuple[Order, User, int]], int]:
+        """Lista paginada para o portal admin e o total da consulta filtrada."""
+        items_count = (
+            select(func.count(OrderItem.id))
+            .where(OrderItem.order_id == Order.id)
+            .correlate(Order)
+            .scalar_subquery()
+        )
+        stmt = self._admin_filtered(
+            select(Order, User, items_count).join(User, User.id == Order.user_id), filters
+        )
+        rows = await self.session.execute(
+            stmt.order_by(Order.created_at.desc(), Order.id.desc()).offset(skip).limit(limit)
+        )
+        count_stmt = self._admin_filtered(
+            select(func.count(Order.id)).select_from(Order).join(User, User.id == Order.user_id),
+            filters,
+        )
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+        return [(o, u, int(n)) for o, u, n in rows.all()], total
+
+    async def get_admin_detail(self, order_id: UUID) -> Optional[AdminOrderDetailData]:
+        query = (
+            select(Order)
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.transactions),
+                selectinload(Order.payment_reconciliation),
+                selectinload(Order.refunds),
+                selectinload(Order.history_logs),
+            )
+            .where(Order.id == order_id, Order.deleted_at.is_(None))
+        )
+        order = (await self.session.execute(query)).scalar_one_or_none()
+        if order is None:
+            return None
+        customer = await self.session.get(User, order.user_id)
+        assert customer is not None
+        author_ids = {h.changed_by_user_id for h in order.history_logs if h.changed_by_user_id}
+        names: dict[UUID, str] = {}
+        if author_ids:
+            result = await self.session.execute(
+                select(User.id, User.full_name).where(User.id.in_(author_ids))
+            )
+            names = {uid: name for uid, name in result.all()}
+        return AdminOrderDetailData(order=order, customer=customer, changed_by_names=names)
 
     async def get_address_for_user(self, address_id: UUID, user_id: UUID) -> Optional[Address]:
         query = select(Address).where(
