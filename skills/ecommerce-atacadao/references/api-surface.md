@@ -109,6 +109,12 @@ Prefixo `/api/v1/integrations/bling`. Contrato completo em
 Sem as variáveis do Bling configuradas, `/connect` e `/callback` respondem 503
 ("Integração com o Bling não configurada."); o deploy sem Bling segue funcionando.
 
+## Catálogo: imagem principal do produto
+
+`GET /catalog/products/`, `/products/{id}` e `/products/code/{code}` trazem `main_image_url`
+(`string | null`): imagem `is_main` da primeira variação ativa (por criação/id), senão a primeira
+imagem de qualquer variação ativa, senão `null`. Imagens de variação inativa/removida são ignoradas.
+
 ## Importação do catálogo do Bling
 
 Contrato em `specs/006-bling-importacao-catalogo/contracts/http-api.md`. Sem token em nenhuma resposta.
