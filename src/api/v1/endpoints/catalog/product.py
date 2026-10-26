@@ -4,9 +4,7 @@ from src.api.v1.endpoints.catalog._crud_factory import build_crud_router
 from src.core.db import DbSession
 from src.repositories.catalog.product_repository import ProductRepository
 from src.schemas.catalog.product_schema import (
-    ProductCreateSchema,
     ProductResponseSchema,
-    ProductUpdateSchema,
 )
 from src.schemas.response_schema import BaseResponse
 from src.services.catalog.product_service import ProductService
@@ -40,20 +38,14 @@ crud_router = build_crud_router(
     prefix="",
     tags=["Products"],
     service_dependency=get_product_service,
-    create_schema=ProductCreateSchema,
-    update_schema=ProductUpdateSchema,
     response_schema=ProductResponseSchema,
     verbs={
-        "create": "create_product",
         "list": "list_products",
         "get": "get_product_by_id",
-        "update": "update_product",
-        "delete": "delete_product",
     },
     not_found_message="Produto não encontrado, che.",
     supports_pagination=True,
-    create_roles=["admin"],
-    write_roles=["admin"],
+    read_only=True,
 )
 
 router.include_router(crud_router)
