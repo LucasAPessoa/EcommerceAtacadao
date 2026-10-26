@@ -25,6 +25,7 @@ from src.integrations.bling.catalog import (
     BlingCatalogClient,
     BlingProduct,
     available_stock,
+    image_identity,
 )
 from src.integrations.bling.client import BlingClient
 from src.integrations.bling.errors import (
@@ -555,12 +556,30 @@ class CatalogSyncService:
             if blocks < MAX_BLOCK_ERRORS:
                 self._add_error(bling_id, reason, f"fora de venda: {reason}")
 
+    async def _refresh_image_urls(self, product: Product, detail: BlingProduct) -> None:
+        """Atualiza `image_url` no lugar quando só a assinatura mudou (mesma identidade)."""
+        incoming = {v.bling_id: v.images for v in detail.variants}
+        touched = False
+        for variant in product.variants:
+            fresh = {
+                image_identity(u): u for u in reversed(incoming.get(variant.bling_id or 0, ()))
+            }
+            for image in variant.images:
+                url = fresh.get(image_identity(image.image_url))
+                if url is not None and url != image.image_url:
+                    image.image_url = url
+                    touched = True
+        if touched:
+            await self.repository.flush()
+
     async def _apply_product(self, detail: BlingProduct) -> tuple[str, list[str], bool]:
         """Grava o produto. Devolve (resultado, motivos de bloqueio, à venda)."""
         repo = self.repository
         product = await repo.find_product(detail.bling_id)
         if product is not None and product.bling_content_hash == detail.content_hash:
-            return "unchanged", [], product.is_active  # FR-002: hash igual, nenhuma escrita
+            # FR-002: hash igual, nenhuma escrita de catálogo; só renova as URLs assinadas (R7).
+            await self._refresh_image_urls(product, detail)
+            return "unchanged", [], product.is_active
         category = (
             await repo.get_category_by_bling_id(detail.category_id) if detail.category_id else None
         )
@@ -677,6 +696,10 @@ class CatalogSyncService:
             self.run.deactivated += await self.repository.deactivate_missing(
                 self.state.seen_bling_ids
             )
+            # Bling é a fonte da verdade: catálogo legado/seed (sem bling_id) sai de venda, mas
+            # só depois de o Bling listar algo (lista vazia nunca derruba o catálogo).
+            if self.state.seen_bling_ids:
+                self.run.deactivated += await self.repository.deactivate_unlinked()
         partial = bool(self._cursor("partial")) or not scan_complete or self.run.failed > 0
         await self._close(
             CatalogSyncRunStatusEnum.PARTIAL if partial else CatalogSyncRunStatusEnum.SUCCESS,

@@ -221,6 +221,15 @@ class CatalogSyncRepository:
             )
         return len(missing)
 
+    async def deactivate_unlinked(self) -> int:
+        """Desativa (nunca apaga) produtos ativos sem bling_id: legado/seed fora do Bling."""
+        result = await self.session.execute(
+            update(Product)
+            .where(Product.bling_id.is_(None), Product.is_active.is_(True))
+            .values(is_active=False, updated_at=datetime.utcnow())
+        )
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
     async def count_active_bling_products(self) -> int:
         query = (
             select(func.count())

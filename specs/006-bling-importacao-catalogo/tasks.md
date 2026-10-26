@@ -79,8 +79,8 @@
 
 ## Phase 7: Validação real e front
 
-- [ ] T022 Primeira importação real no deploy `demo` (quickstart, cenário 4), com aprovação do usuário: disparo manual, acompanhamento até `SUCCESS`, conferência de 5 produtos e da segunda execução — executor: orquestrador + usuário
-- [ ] T023 Registrar no `research.md` o resultado dos [a validar] (R1, R2, R7) e ajustar `src/integrations/bling/catalog.py` se preciso; se as URLs de imagem expirarem, aplicar o fallback do R7 e abrir issue de storage — executor: atacadao-api + orquestrador
+- [x] T022 Primeira importação real no deploy `demo` (quickstart, cenário 4), com aprovação do usuário: disparo manual, acompanhamento até `SUCCESS`, conferência de 5 produtos e da segunda execução — executor: orquestrador + usuário
+- [x] T023 Registrar no `research.md` o resultado dos [a validar] (R1, R2, R7) e ajustar `src/integrations/bling/catalog.py` se preciso; se as URLs de imagem expirarem, aplicar o fallback do R7 e abrir issue de storage — executor: atacadao-api + orquestrador
 - [ ] T024 Abrir issue no `front_atacadao` (com autorização do usuário) e implementar a tela "Catálogo do Bling" no admin: execução corrente, histórico, contagens, erros e botão "Importar agora" — executor: orquestrador → atacadao-front
 
 ---

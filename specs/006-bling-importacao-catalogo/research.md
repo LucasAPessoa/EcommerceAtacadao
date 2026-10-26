@@ -1,19 +1,19 @@
 # Research: Importação do catálogo do Bling
 
-Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real da spec 001 (2026-10-26: OAuth, `/empresas/me/dados-basicos`, formato de erro). Itens **[a validar]** são confirmados na primeira importação real (quickstart, cenário 4) antes de fechar a feature; a leitura fica isolada em `src/integrations/bling/catalog.py` para absorver diferenças.
+Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real da spec 001 (2026-10-26: OAuth, `/empresas/me/dados-basicos`, formato de erro). Itens que eram **[a validar]** foram confirmados na primeira importação real de 2026-10-26 (marcados "Observado"); a leitura fica isolada em `src/integrations/bling/catalog.py` para absorver diferenças.
 
 ## R1. Endpoints de leitura
 
 - **Decision**: `GET /produtos?pagina=N&limite=100` para a varredura (ids, situação, formato, `idProdutoPai`); `GET /produtos/{id}` para o detalhe (descrições, marca, unidade, peso, dimensões, `categoria`, `midia`, `variacoes`); `GET /categorias/produtos` paginado; `GET /estoques/saldos?idsProdutos[]=…` em lotes para o saldo.
 - **Rationale**: a lista é barata (100 por chamada) e basta para detectar ausência e inativação; o detalhe só é pedido para produto novo ou alterado (R2).
 - **Alternatives**: detalhe de todos a cada ciclo (2.000 chamadas por ciclo, inviável a 2,5 req/s); webhooks (fora do MVP, constituição IV).
-- **[a validar]**: campos da lista; se variações aparecem na lista (com `idProdutoPai`) ou só no detalhe do pai; tamanho máximo do lote em `/estoques/saldos`; se `saldoVirtualTotal` já vem na lista.
+- **Observado em 2026-10-26** (importação real, conta Kalun, ~40 produtos): a lista traz `id`, `situacao`, `idProdutoPai` (variações descartadas) e o detalhe traz `midia`, `pesoBruto`, `dimensoes`, `categoria`, `variacoes`, conforme implementado; formato `S` (simples) nos produtos vistos; vários sem peso/medidas, corretamente bloqueados. Ids reais têm 11 dígitos (ex. 16724017605): `bling_id` é `BigInteger` e os testes/fake usam ids > 2^31.
 
 ## R2. Detecção de mudança e idempotência
 
 - **Decision**: filtro `dataAlteracaoInicial` (último ciclo completo − 10 min de folga) para escolher quais detalhes buscar; ao gravar, hash SHA-256 do conteúdo normalizado por produto (`bling_content_hash`). Hash igual → nada é escrito. Uma vez por dia o ciclo ignora o filtro e busca o detalhe de todos (rede de segurança), ainda sem escrever o que não mudou.
 - **Rationale**: FR-002 (segunda execução sem alterações) sem depender só do relógio do Bling.
-- **[a validar]**: suporte e semântica de `dataAlteracaoInicial` em `/produtos`; se mudança de variação altera a data do pai. Se o filtro não existir: detalhe só para ids novos + varredura diária completa.
+- **Observado em 2026-10-26**: `dataAlteracaoInicial` é enviado só na 2ª passada da varredura (e só em ciclo não completo, isto é, dentro de `CATALOG_SYNC_FULL_DETAIL_HOURS`=24 h do último SUCCESS completo); o código não o ignora. Na 2ª execução real, 32 de 34 produtos foram detalhados e gravados: a causa comprovada é o hash incluir URLs de imagem assinadas (R7), que mudam a cada leitura; se o ciclo caiu depois de 24 h, a varredura completa relê todos os detalhes por desenho. Correção: hash sem query (R7). O resultado do filtro no Bling (se devolve só alterados) não foi isolado da varredura completa e permanece coberto pela 2ª passada + varredura diária.
 
 ## R3. Ciclo retomável
 
@@ -39,7 +39,7 @@ Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real
 ## R7. Imagens
 
 - **Decision**: imagens da variação = `midia` própria da variação; sem imagens próprias, as do pai. Conjunto substituído (apaga e recria) só quando o hash do produto muda. `product_images.image_url` passa a `String(1000)`.
-- **[a validar]**: se as URLs de imagens internas do Bling expiram (link assinado). Se expirarem: usar só imagens externas (URL cadastrada) no MVP e abrir issue para copiar imagens para storage próprio.
+- **Observado em 2026-10-26**: as imagens são links S3 assinados (`https://orgbling.s3.amazonaws.com/<hash>/<hash>?AWSAccessKeyId=…&Expires=<epoch+7 dias>&Signature=…`); a assinatura muda a cada leitura do detalhe e o link expira em 7 dias. **Decisão**: identidade da imagem = scheme+host+path; `content_hash` ignora a query. Com hash igual e URLs diferentes, `image_url` é atualizado no lugar (sem apagar/recriar, sem tocar `updated_at`/`last_bling_sync` de produto e variação; conta como `unchanged`). A varredura completa diária (24 h) relê todos os detalhes e renova as URLs bem antes dos 7 dias. **Follow-up**: copiar as imagens para storage próprio (URLs estáveis, sem depender da validade do S3 se a varredura ficar parada por dias).
 
 ## R8. Venda bloqueada por falta de peso/medidas
 
@@ -52,4 +52,4 @@ Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real
 
 ## R10. Dados existentes do seed
 
-- **Decision**: produtos do seed com `bling_id` fictício não aparecem na varredura e são desativados no primeiro ciclo completo real (comportamento desejado; pedidos antigos continuam íntegros). Registrado no quickstart.
+- **Decision**: produtos do seed (com `bling_id` fictício ou sem `bling_id`) não aparecem na varredura e são desativados no FINALIZE do primeiro ciclo completo real (comportamento desejado; pedidos antigos continuam íntegros). **Observado em 2026-10-26**: o seed sem `bling_id` seguia ativo e à venda após o ciclo; o FINALIZE passou a desativar também produtos ativos com `bling_id IS NULL` (nunca apaga; conta em `deactivated`), sob as mesmas guardas (varredura completa e não vazia, com ao menos um produto visto). Registrado no quickstart.
