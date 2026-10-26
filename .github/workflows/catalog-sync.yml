@@ -1,0 +1,38 @@
+name: Catalog sync
+
+# Dispara o job interno de sincronização do catálogo com o Bling (spec 006,
+# issue #54): avança uma fatia do ciclo de importação do catálogo.
+# O job roda na API; este workflow só faz a chamada autenticada. A resposta é
+# 200 mesmo quando outra execução está em andamento (status BUSY).
+# Secrets do repositório: CATALOG_SYNC_JOB_URL (URL completa do endpoint
+# /api/v1/internal/jobs/catalog-sync) e MAINTENANCE_JOB_TOKEN (o mesmo token
+# do job de manutenção de pagamentos). Sem os secrets, o workflow não faz nada.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: catalog-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  trigger:
+    name: Dispara sincronização do catálogo
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chama o endpoint interno
+        env:
+          JOB_URL: ${{ secrets.CATALOG_SYNC_JOB_URL }}
+          JOB_TOKEN: ${{ secrets.MAINTENANCE_JOB_TOKEN }}
+        run: |
+          if [ -z "$JOB_URL" ] || [ -z "$JOB_TOKEN" ]; then
+            echo "::notice::Secrets CATALOG_SYNC_JOB_URL/MAINTENANCE_JOB_TOKEN ausentes; nada a fazer."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -X POST -H "Authorization: Bearer $JOB_TOKEN" "$JOB_URL"
