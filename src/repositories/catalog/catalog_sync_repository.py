@@ -230,6 +230,10 @@ class CatalogSyncRepository:
         )
         return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
+    async def count_bling_products(self) -> int:
+        query = select(func.count()).select_from(Product).where(Product.bling_id.is_not(None))
+        return int((await self.session.execute(query)).scalar_one())
+
     async def count_active_bling_products(self) -> int:
         query = (
             select(func.count())

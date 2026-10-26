@@ -15,6 +15,7 @@ Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real
 - **Rationale**: FR-002 (segunda execução sem alterações) sem depender só do relógio do Bling.
 - **Observado em 2026-10-26**: `dataAlteracaoInicial` é enviado só na 2ª passada da varredura (e só em ciclo não completo, isto é, dentro de `CATALOG_SYNC_FULL_DETAIL_HOURS`=24 h do último SUCCESS completo); o código não o ignora. Na 2ª execução real, 32 de 34 produtos foram detalhados e gravados: a causa comprovada é o hash incluir URLs de imagem assinadas (R7), que mudam a cada leitura; se o ciclo caiu depois de 24 h, a varredura completa relê todos os detalhes por desenho. Correção: hash sem query (R7). O resultado do filtro no Bling (se devolve só alterados) não foi isolado da varredura completa e permanece coberto pela 2ª passada + varredura diária.
 - **Decisão 2026-10-26 (custo, conta com 40 produtos detalhados a cada ciclo)**: (1) `dataAlteracaoInicial` é convertido de UTC para `America/Sao_Paulo` antes de formatar (o Bling lê a data nesse fuso). (2) Guarda: se a 2ª passada devolver ≥ 90% dos produtos vistos na 1ª e houver mais de 20 vistos, o filtro é tratado como ignorado: a leva é descartada (ficam só os detalhes da 1ª passada), a execução registra o aviso `filtro_alteracao_ignorado` (uma vez) e a releitura diária cobre as alterações; com ≤ 20 produtos detalha-se tudo (barato). (3) Observabilidade: cursor com `pass2_items`, `detailed`, `ignored` e log `catalog_sync_cycle full= pass2_items= detailed= seen=` (sem dados sensíveis); sem mudança de contrato HTTP.
+- **Decisão 2026-10-26 (produção: o Bling IGNORA `dataAlteracaoInicial`; guarda `filtro_alteracao_ignorado` disparou com 40 produtos)**: como o filtro não é confiável, a releitura completa passa a ser adaptativa pela cota: intervalo = max(`CATALOG_SYNC_INTERVAL_MINUTES`, min(`CATALOG_SYNC_FULL_DETAIL_HOURS` em min, ceil(produtos com `bling_id` × 1440 / `CATALOG_SYNC_DAILY_DETAIL_BUDGET`))), orçamento padrão 40.000 detalhes/dia (~1/3 da cota de 120 mil/dia, folga para pedidos). 40 produtos → todo ciclo é completo (SC-003 ≤ 1 h atendido); 2.000 → a cada 72 min; 20.000 → 12 h (24 h só a partir de 40.000). Ciclo completo não faz a 2ª passada, então o aviso some; a 2ª passada + guarda continuam para catálogos grandes.
 
 ## R3. Ciclo retomável
 
@@ -49,7 +50,7 @@ Fontes: documentação da API v3 (`developer.bling.com.br`) e a validação real
 ## R9. Gatilhos
 
 - **Decision**: workflow `catalog-sync.yml` (cron a cada 10 min, `--max-time 60`) chamando `POST /api/v1/internal/jobs/catalog-sync` com o mesmo token de job; botão do admin `POST /api/v1/integrations/bling/catalog-sync` que pede um novo ciclo e executa uma fatia na hora. Sem conexão `CONNECTED`: execução `SKIPPED` com motivo, catálogo intacto (FR-008).
-- **Throughput**: ~110 chamadas por invocação; importação inicial de 2.000 produtos ≈ 2.000 detalhes ≈ 18 invocações ≈ 3 h no cron de 10 min (SC-005 ajustado).
+- **Throughput**: ~110 chamadas por invocação; importação inicial de 2.000 produtos ≈ 2.000 detalhes ≈ 18 invocações ≈ 3 h no cron de 10 min (SC-005 ajustado). Releitura completa adaptativa: ver R2.
 
 ## R10. Dados existentes do seed
 
