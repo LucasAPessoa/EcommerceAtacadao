@@ -464,6 +464,50 @@ class TestRefresh:
         assert (await _connection(db))["last_error_code"] is None
 
     @pytest.mark.asyncio
+    async def test_fast_path_decrypt_failure_marks_reconnect(
+        self, client: httpx.AsyncClient, admin_token: str, fake: httpx.AsyncClient, db: AsyncEngine
+    ):
+        await _connect(client, admin_token)  # token válido: cai no caminho rápido
+        async with db.begin() as conn:
+            await conn.execute(
+                text("UPDATE bling_connections SET access_token_enc = :v"),
+                {"v": b"lixo-nao-decifravel"},
+            )
+
+        with pytest.raises(BlingReconnectRequiredError):
+            await _provider(db).get_token()
+
+        row = await _connection(db)
+        assert row["status"] == "RECONNECT_REQUIRED"
+        assert row["last_error_code"] == "token_decrypt_failed"
+        assert (await _counts(db))["events"] == ["CONNECTED", "RECONNECT_REQUIRED"]
+
+    @pytest.mark.asyncio
+    async def test_encrypt_failure_after_refresh_marks_reconnect(
+        self,
+        client: httpx.AsyncClient,
+        admin_token: str,
+        fake: httpx.AsyncClient,
+        db: AsyncEngine,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        await _connect(client, admin_token)
+        await _expire_access(db)
+
+        def _boom(_plain: str) -> Any:
+            raise crypto.CryptoError("chave ausente")
+
+        monkeypatch.setattr(crypto, "encrypt", _boom)
+
+        with pytest.raises(BlingReconnectRequiredError):
+            await _provider(db).get_token()
+
+        row = await _connection(db)
+        assert row["status"] == "RECONNECT_REQUIRED"
+        assert row["last_error_code"] == "token_encrypt_failed"
+        assert (await _counts(db))["events"] == ["CONNECTED", "RECONNECT_REQUIRED"]
+
+    @pytest.mark.asyncio
     async def test_not_connected_raises(self, fake: httpx.AsyncClient, db: AsyncEngine):
         with pytest.raises(BlingNotConnectedError):
             await _provider(db).get_token()
