@@ -126,6 +126,12 @@ bucket; é limitado apenas pela validação HMAC e pelo teto de corpo. Uma recus
   até `MERCADO_PAGO_CANCEL_MAX_ATTEMPTS` (8, backoff de 1 a 64 min ≈ 2 h). Pedidos pagos nunca são tocados.
   Agende-o externamente (ex.: a cada 5 minutos). Execução manual:
   `uv run python -m scripts.run_payment_maintenance`.
+- Workflow `Catalog sync` (`.github/workflows/catalog-sync.yml`): a cada 10 min (e
+  manualmente) chama `POST /api/v1/internal/jobs/catalog-sync` com o mesmo
+  `MAINTENANCE_JOB_TOKEN` (resposta 200; `status` pode ser `BUSY` se outra execução
+  estiver ativa). Secret do repositório: `CATALOG_SYNC_JOB_URL` (URL completa do
+  endpoint). Sem esse secret ou o token, o workflow apenas emite um aviso e termina
+  com sucesso. Como o `Payment maintenance`, não usa matriz por cliente.
 
 ## Checkout transacional
 
