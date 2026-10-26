@@ -22,6 +22,8 @@ ROUTES = [
     ("PATCH", f"{ADMIN}/products/presentation"),
     ("GET", f"{ADMIN}/orders"),
     ("GET", f"{ADMIN}/orders/{SOME_ID}"),
+    ("GET", f"{ADMIN}/dashboard/summary"),
+    ("GET", f"{ADMIN}/bling/pending"),
 ]
 
 
