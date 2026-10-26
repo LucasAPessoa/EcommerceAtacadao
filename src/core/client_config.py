@@ -19,6 +19,7 @@ from src.core.config import Settings
 from src.models.enums import OrderStatusEnum
 
 DEFAULT_STORE_NAME = "E-Commerce API"
+DEFAULT_LOW_STOCK_THRESHOLD = 5
 _TENANT_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _UFS = frozenset(
@@ -103,6 +104,7 @@ class ClientConfig(_Frozen):
     mercado_pago: MercadoPagoCredentials | None = None
     bling: BlingCredentials | None = None
     bling_order_status_map: dict[int, OrderStatusEnum] = {}
+    low_stock_threshold: int = DEFAULT_LOW_STOCK_THRESHOLD
 
     @property
     def bling_configured(self) -> bool:
@@ -294,6 +296,15 @@ def build_client_config(settings: Settings) -> ClientConfig:
         else:
             errors.append(("STORE_HANDLING_DAYS", "inteiro maior ou igual a 0"))
 
+    # Estoque baixo (portal admin)
+    low_stock = DEFAULT_LOW_STOCK_THRESHOLD
+    raw_low_stock = text(s.LOW_STOCK_THRESHOLD)
+    if raw_low_stock:
+        if raw_low_stock.isascii() and raw_low_stock.isdigit():
+            low_stock = int(raw_low_stock)
+        else:
+            errors.append(("LOW_STOCK_THRESHOLD", "inteiro maior ou igual a 0"))
+
     # Melhor Envio
     me_token = _secret(s.MELHOR_ENVIO_TOKEN)
     me_agent = text(s.MELHOR_ENVIO_USER_AGENT)
@@ -386,6 +397,7 @@ def build_client_config(settings: Settings) -> ClientConfig:
         mercado_pago=mercado_pago,
         bling=bling,
         bling_order_status_map=status_map,
+        low_stock_threshold=low_stock,
     )
 
 
