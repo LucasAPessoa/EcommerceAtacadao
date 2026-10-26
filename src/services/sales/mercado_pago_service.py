@@ -24,12 +24,16 @@ from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.sales.checkout_schema import MercadoPagoCheckoutSchema
 from src.schemas.sales.mercado_pago_schema import MercadoPagoCheckoutResponseSchema
 from src.services.sales.checkout_service import CheckoutService
+from src.services.sales.order_eligibility import (
+    is_dispatched,
+    is_payment_approved,
+    refund_needs_reconciliation,
+)
 
 logger = logging.getLogger(__name__)
 
 
 _KNOWN_PENDING_STATUSES = {"created", "processing", "action_required", "pending", "expired"}
-_DISPATCHED = {OrderStatusEnum.PROCESSING, OrderStatusEnum.SHIPPED, OrderStatusEnum.DELIVERED}
 _UNDISPATCHED_PAID = {OrderStatusEnum.PAID, OrderStatusEnum.PAYMENT_RECONCILIATION}
 # Transições financeiras posteriores à aprovação (estado atual -> novos estados).
 _FINANCIAL_TRANSITIONS = {
@@ -412,7 +416,7 @@ class MercadoPagoCheckoutService:
                 )
             return
 
-        if order.status in _DISPATCHED:
+        if is_dispatched(order.status):
             # Devolução física: sem mexer em status nem em estoque.
             await self._open_manual_review(
                 order,
@@ -520,11 +524,7 @@ class MercadoPagoCheckoutService:
         """Entrada administrativa idempotente para a fila de reconciliação."""
         transaction = await self.repository.get_transaction_for_mercado_pago_order(order_id)
         order = await self.repository.get_by_id(order_id)
-        if (
-            transaction is None
-            or order is None
-            or transaction.status != TransactionStatusEnum.APPROVED
-        ):
+        if transaction is None or order is None or not is_payment_approved(transaction.status):
             raise ValueError("Pedido não possui pagamento aprovado para reconciliar.")
         reconciliation = await self.repository.get_reconciliation_for_order(order_id, lock=True)
         if reconciliation is None:
@@ -548,9 +548,9 @@ class MercadoPagoCheckoutService:
             raise ValueError("Pedido não possui pagamento elegível para estorno.")
         await self.repository.session.refresh(order, attribute_names=["status"])
         await self.repository.session.refresh(transaction)
-        if order.status in _DISPATCHED:
+        if is_dispatched(order.status):
             raise ValueError("Pedido já despachado: o estorno exige o fluxo de devolução.")
-        if transaction.status != TransactionStatusEnum.APPROVED:
+        if not is_payment_approved(transaction.status):
             raise ValueError("Somente pagamentos aprovados podem ser estornados.")
         reconciliation = await self.repository.get_reconciliation_for_order(order_id, lock=True)
         existing_reason = getattr(reconciliation, "reason", None)
@@ -560,7 +560,7 @@ class MercadoPagoCheckoutService:
             else "stock_commit_failed"
         )
         if reconciliation is None:
-            if order.status != OrderStatusEnum.PAID:
+            if refund_needs_reconciliation(order.status, False):
                 raise ValueError("Pedido não possui reconciliação elegível para estorno.")
             reconciliation = await self.repository.create_reconciliation(
                 order_id,

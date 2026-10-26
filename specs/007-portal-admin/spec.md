@@ -4,11 +4,11 @@
 
 **Created**: 2026-10-26
 
-**Status**: Draft
+**Status**: Implementada (escopo fechado em 2026-10-26)
 
 **Input**: User description: "Substituir o admin atual do front (tela única com CRUD por JSON cru) por um portal com Dashboard, Produtos, Pedidos e Bling. Produtos com busca, filtros, paginação com total, detalhe somente leitura do que vem do Bling, preço do site e faixas, e camada de apresentação do site por produto com override por campo (nome, descrições, categorias) que a sync do Bling nunca sobrescreve, mais visibilidade e destaque. Pedidos com filtros e ações existentes. Dashboard calculado no servidor. Bling com acompanhamento da importação e pendências. Só administradores."
 
-**Issues**: a abrir — back (contrato, overrides, filtros, resumo, pendências) e front (portal). Relacionadas: spec 003 (catálogo somente leitura), spec 006 (importação do catálogo), constituição v1.1.0 (princípio I, camada de apresentação).
+**Issues**: front #32 (painel administrativo independente; esta spec a implementa, com sessão própria em vez de compartilhada). PRs: back #106–#109, front #52, #54 e #60. Relacionadas: spec 003 (catálogo somente leitura), spec 006 (importação do catálogo), constituição v1.1.0 (princípio I, camada de apresentação).
 
 ## Clarifications
 
@@ -183,6 +183,7 @@ O administrador entra no portal por um endereço próprio (`/admin/`), que o sit
 - **FR-002**: O portal MUST ser uma aplicação separada da loja, servida em `/admin/` no mesmo domínio, com navegação entre Dashboard, Produtos, Pedidos, Moderação e Bling. Ele substitui o editor genérico por JSON do admin atual. A loja MUST NOT carregar código ou estilos do portal, e o portal MUST NOT depender da interface ou dos estilos da loja.
 - **FR-002a**: O portal MUST ter login e sessão próprios, independentes da sessão da loja. Login de quem não é admin é recusado sem abrir sessão. Recusa por falta de permissão durante o uso encerra a sessão do portal e volta ao login.
 - **FR-002b**: A loja MUST oferecer, só para usuários admin, um link "Painel admin" que abre `/admin/` em nova guia.
+- **FR-002c**: O portal MUST exibir no menu as seções previstas e ainda sem tela (Clientes, Entrega, Despacho e Configurações), cada uma com rota própria mostrando "em breve". Elas são entregues fora desta spec: Entrega na front #27, Despacho na front #26, Clientes e Configurações em specs futuras.
 
 **Produtos — consulta**
 
@@ -265,7 +266,7 @@ O administrador entra no portal por um endereço próprio (`/admin/`), que o sit
 
 - O catálogo de cada loja tem até alguns milhares de produtos. Volumes muito maiores ficam fora do alvo desta spec.
 - Só existe o papel "administrador" com acesso total ao portal. Papéis diferenciados (ex.: operador só de pedidos) ficam para depois.
-- A gestão de clientes (lista, detalhe, papéis, bloqueio) fica fora desta spec. A lista simples de usuários do admin atual deixa de existir junto com ele e volta numa spec própria de clientes.
+- A gestão de clientes (lista, detalhe, papéis, bloqueio) fica fora desta spec. A lista simples de usuários do admin atual deixa de existir junto com ele e volta numa spec própria de clientes. No portal, Clientes, Entrega (front #27), Despacho (front #26) e Configurações aparecem só como "em breve" (FR-002c).
 - Temas selecionáveis (da loja e do portal) são um plano futuro; esta spec só garante estilos baseados em variáveis de tema.
 - O site não cria categorias próprias. As personalizações usam as categorias existentes, vindas do Bling.
 - Imagens não são personalizáveis nesta spec.
