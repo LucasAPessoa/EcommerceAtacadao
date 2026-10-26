@@ -23,7 +23,7 @@ def get_moderation_repository(session: DbSession) -> ModerationRepository:
     return ModerationRepository(session)
 
 
-def _common(obj, name: str, author: str) -> dict:  # type: ignore[no-untyped-def]
+def _common(obj, name: str, author: str) -> dict:
     return {
         "id": obj.id,
         "created_at": obj.created_at,
