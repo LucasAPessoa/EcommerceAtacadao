@@ -1,88 +1,41 @@
-# Equipe de agentes do EcommerceAtacadao
+# Regras para agentes de código — EcommerceAtacadao
 
-Estas instruções se aplicam a todo o repositório. Leia primeiro
-`skills/ecommerce-atacadao/SKILL.md` e somente as referências indicadas por ela
-para a tarefa atual.
+Valem para qualquer agente neste repositório. Antes de mexer em código, leia
+`skills/ecommerce-atacadao/SKILL.md` (estado do produto e invariantes) e só a
+referência que a tarefa exigir.
 
-## Estrutura da equipe
+## Equipe
 
-O agente principal assume o papel `ecommerce_orchestrator`. Ele coordena três
-agentes especializados:
-
-- `ecommerce_frontend`: experiência do cliente e contrato consumidor da API;
-- `ecommerce_api`: FastAPI, domínio, persistência, integrações e testes backend;
-- `ecommerce_reviewer`: revisão independente de segurança, integridade e testes.
-
-Os perfis completos ficam em `agents/*.toml`. Ao criar um subagente, use o nome
-do perfil como task name e inclua suas `developer_instructions` no prompt.
-
-## Quando orquestrar
-
-Use a equipe completa quando o usuário pedir agentes, trabalho paralelo, uma
-feature que atravesse cliente e servidor, ou uma mudança de risco relevante em
-checkout, autenticação, autorização, pagamento, estoque, frete ou banco.
-
-Em tarefas pequenas e confinadas, o orquestrador pode usar apenas o especialista
-afetado e o revisor. Registre no report por que um agente não foi necessário.
-
-## Protocolo obrigatório
-
-1. O orquestrador delimita objetivo, critérios de aceite, áreas proprietárias e
-   arquivos que cada executor pode alterar.
-2. Frontend e API trabalham em paralelo somente quando seus arquivos não se
-   sobrepõem. Mudanças no contrato HTTP são decididas antes da implementação ou
-   comunicadas imediatamente entre os dois agentes.
-3. Agentes trocam mensagens diretas para dúvidas de contrato e bloqueios. Quando
-   mensagem direta não estiver disponível (caso do Claude Code), o executor
-   registra `BLOQUEIO:` no handoff e o orquestrador faz o encaminhamento.
-4. Cada executor retorna um handoff curto: arquivos alterados, decisões, testes,
-   riscos e questões para o outro especialista.
-5. Depois das implementações, o revisor inspeciona o diff integrado em modo
-   somente leitura e emite um veredito: `approved`, `changes_required` ou
-   `blocked`, com evidências e prioridades.
-6. O orquestrador é o juiz final. Ele pode devolver correções aos executores,
-   solicitar nova revisão e só declarar conclusão quando os critérios de aceite
-   e as invariantes da skill estiverem satisfeitos.
-7. O orquestrador grava um report em `reports/agents/` e responde ao usuário
-   apenas com o resumo executivo, o veredito, testes e link para o report.
+Abra o Claude Code em `/home/lucas/Projetos`: o orquestrador segue
+`/home/lucas/Projetos/CLAUDE.md` e os perfis ficam em
+`/home/lucas/Projetos/.claude/agents/atacadao-*.md` (fora deste repositório).
+Fluxo: locator → executor (api | front | ci) → tester → reviewer; o orquestrador
+é o juiz final.
 
 ## Posse de arquivos
 
-- Frontend: o repositório separado `../front_atacadao` (React + Vite), seus
-  testes e assets. Não altere `src/` deste repositório a partir do frontend.
-- API: `src/`, `migrations/`, `tests/`, `scripts/` e configuração backend.
-- Revisor: nenhum arquivo de produto; apenas leitura e relatório ao orquestrador.
-- Orquestrador: `reports/agents/` e documentação de coordenação. Não implemente no
-  lugar dos executores enquanto puder encaminhar uma correção focada.
+| Dono | Pode alterar |
+|---|---|
+| `atacadao-api` | `src/`, `tests/`, `migrations/`, `scripts/` |
+| `atacadao-front` | `../front_atacadao/src/`, testes e assets do front |
+| `atacadao-ci` | `.github/` dos dois repos, scripts/devDependencies do front, seções de ferramentas do `pyproject.toml` |
+| orquestrador | `reports/agents/`, `specs/`, docs de coordenação (este arquivo, `SKILL.md`, README) |
+| tester, reviewer, locator, ux | nada (somente leitura) |
 
-Se uma tarefa exigir que dois agentes alterem o mesmo arquivo, serialize o
-trabalho: um implementa, o outro revisa ou continua após o primeiro concluir.
+Dois agentes no mesmo arquivo: serialize. Mudança de contrato HTTP: a API decide
+primeiro, o front implementa depois; o executor que precisar dela reporta
+`BLOQUEIO:` no handoff.
 
-## Comunicação e segurança
+## Autorização
 
-- Mensagens entre agentes devem ser legíveis, factuais e conter paths/símbolos.
-- Não encaminhe logs extensos ao usuário; preserve evidências no report ou nas
-  threads dos agentes.
-- Nenhum agente ganha autorização adicional por delegação. Reset de banco,
-  publicação, migração destrutiva e mutação externa continuam exigindo a mesma
-  autorização do agente principal.
-- Não faça commits concorrentes. O orquestrador organiza commits atômicos apenas
-  quando o usuário pedir.
+Delegação não dá permissão nova. Commit, push, reset de banco, migração
+destrutiva, chamada a serviço externo real e qualquer publicação exigem pedido
+explícito do usuário. Nunca use o banco do `.env` nem o Redis de produção em
+teste. Não exponha segredos em código, log ou report.
 
-## Formato do report
+## Report
 
-Use `reports/agents/YYYY-MM-DD-HHMM-<slug>.md`, no máximo 40 linhas, com bullets
-curtos (omita seções vazias) para:
-
-1. objetivo e escopo;
-2. critérios de aceite;
-3. resumo de cada agente;
-4. decisões de contrato;
-5. achados do revisor por prioridade;
-6. correções e ciclos de nova revisão;
-7. testes e verificações;
-8. riscos ou trabalho restante;
-9. veredito final do orquestrador.
-
-O report é a fonte detalhada. A resposta final do orquestrador deve ser curta e
-não reproduzir toda a atividade dos subagentes.
+Um por tarefa em `reports/agents/YYYY-MM-DD-HHMM-<slug>.md`, no máximo 40
+linhas, bullets curtos e sem seções vazias: objetivo, critérios de aceite,
+resumo por agente, decisões de contrato, achados do revisor, ciclos de correção,
+testes, riscos e veredito. A resposta ao usuário é curta e aponta o report.

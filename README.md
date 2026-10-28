@@ -2,7 +2,7 @@
 
 Backend FastAPI do e-commerce, organizado nos domínios de catálogo,
 identidade, operações e vendas. As respostas HTTP seguem o envelope
-`BaseResponse` descrito em `IDEA.md`.
+`BaseResponse` (`src/schemas/response_schema.py`).
 
 ## Configuração local
 

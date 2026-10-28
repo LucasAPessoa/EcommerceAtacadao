@@ -24,8 +24,6 @@ Leia somente as referências necessárias, sempre por completo:
   [checkout.md](references/checkout.md) além da referência do domínio afetado.
 - Setup, migrações, seed, reset, testes, relatórios ou commits: leia
   [development.md](references/development.md).
-- Trabalho com a equipe especializada, delegação ou reports de agentes: leia
-  [agents.md](references/agents.md) e o `AGENTS.md` da raiz.
 
 Para tarefas transversais, combine as referências relevantes. Não leia todas por
 padrão.
@@ -42,8 +40,30 @@ padrão.
    persistir. Para mudanças em models, crie e revise uma migração Alembic.
 5. Teste primeiro a unidade de negócio frágil e depois o contrato HTTP. Em fluxos
    de compra, valide também concorrência, replay, rollback e isolamento de dono.
-6. Entregue o resultado com limites conhecidos. Separe em commits convencionais
-   e atômicos somente quando o usuário pedir commits.
+6. Entregue o resultado com limites conhecidos.
+
+## Estado do produto
+
+Implementado: API em `/api/v1` (docs em `/api/docs`, `/health`); JWT com access e
+refresh separados; catálogo público (mutações só de admin, exceto perguntas e
+avaliações autenticadas); carrinho por usuário; frete pelo Melhor Envio; checkout
+`preview`/`confirm` com Mercado Pago; pedidos por proprietário; conexão e
+importação do catálogo Bling; portal admin em `/api/v1/admin/*` (spec 007:
+dashboard, produtos, pedidos, moderação, Bling); camada de apresentação por
+produto que a sync do Bling não sobrescreve; tema da loja em `/api/v1/store/theme`.
+
+Ainda não ponta a ponta: sync bidirecional e webhooks do Bling, entrega regional
+por CEP, etiquetas e coleta, remessa/chargeback/nota fiscal, seções "em breve" do
+portal (clientes, entrega própria, despacho, configurações), workers e
+observabilidade. Tabela ou seed não prova fluxo: confirme router, service,
+repository, integração e testes antes de prometer uma capacidade.
+
+## Convenções
+
+Identificadores e código em inglês; comentários, docstrings, mensagens de erro e
+comunicação em português. Sucesso responde com `BaseResponse`
+(`src/schemas/response_schema.py`), sem esconder o status HTTP real. Commits em
+Conventional Commits, atômicos, só quando o usuário pedir.
 
 ## Invariantes obrigatórias
 
