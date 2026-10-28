@@ -41,6 +41,9 @@ from .operations import (
 # Domínio de Vendas (Carts, Orders, Coupons)
 from .sales import Cart, CartItem, Coupon, Order, OrderItem, StockReservation
 
+# Configuração da loja (tema)
+from .store import StoreSettings
+
 __all__ = [
     "Base",
     "Role",
@@ -73,4 +76,5 @@ __all__ = [
     "CatalogSyncRun",
     "ProductSitePresentation",
     "product_site_categories",
+    "StoreSettings",
 ]
