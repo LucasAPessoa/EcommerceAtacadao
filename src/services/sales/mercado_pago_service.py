@@ -195,10 +195,12 @@ class MercadoPagoCheckoutService:
         # Releia sob o lock da transação: um cancelamento pode ter sido
         # confirmado enquanto a Order remota era criada.
         session = self.repository.session
+        # `order` é o schema devolvido por confirm(), não a entidade ORM: o status
+        # atual vem de consulta direta, não de session.refresh.
         await self.repository.get_transaction_for_order(order.id)
-        await session.refresh(order, attribute_names=["status"])
+        current_status = await self.repository.get_order_status(order.id)
         await session.refresh(transaction)
-        if order.status in {OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED}:
+        if current_status in {OrderStatusEnum.CANCELED, OrderStatusEnum.EXPIRED}:
             # Persista a ref para a guarda do webhook; a Order remota não pode
             # ficar pagável nem devolvemos a URL.
             transaction.gateway_provider = "MERCADO_PAGO"

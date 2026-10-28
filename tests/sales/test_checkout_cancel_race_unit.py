@@ -5,10 +5,12 @@ from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
+from sqlalchemy.orm.exc import UnmappedInstanceError
 
 from src.core.client_config import MercadoPagoCredentials
 from src.models.enums import OrderStatusEnum, TransactionStatusEnum
 from src.schemas.sales.checkout_schema import CheckoutConfirmSchema
+from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.sales.mercado_pago_service import MercadoPagoCheckoutService
 from src.services.sales.order_service import OrderService
 
@@ -24,7 +26,8 @@ def _checkout_input() -> CheckoutConfirmSchema:
 
 
 def _start_setup(canceled_meanwhile: bool):
-    order = SimpleNamespace(
+    # confirm() devolve o schema Pydantic, nunca a entidade ORM.
+    order = OrderResponseSchema.model_construct(
         id=uuid4(),
         order_code="PED-1",
         currency="BRL",
@@ -40,9 +43,10 @@ def _start_setup(canceled_meanwhile: bool):
     events: list[str] = []
 
     async def refresh(obj, attribute_names=None):
-        # Simula o cancel_order concorrente já comitado: pedido e transação CANCELED.
-        if canceled_meanwhile and obj is order:
-            order.status = OrderStatusEnum.CANCELED
+        # Como a AsyncSession real: só entidades mapeadas podem ser relidas.
+        if obj is not transaction:
+            raise UnmappedInstanceError(obj)
+        # Simula o cancel_order concorrente já comitado.
         if canceled_meanwhile and obj is transaction:
             transaction.status = TransactionStatusEnum.CANCELED
 
@@ -54,6 +58,11 @@ def _start_setup(canceled_meanwhile: bool):
 
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_order_status=AsyncMock(
+            return_value=(
+                OrderStatusEnum.CANCELED if canceled_meanwhile else OrderStatusEnum.PENDING_PAYMENT
+            )
+        ),
         get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
         count_live_active_reservations=AsyncMock(return_value=1),
         session=SimpleNamespace(
