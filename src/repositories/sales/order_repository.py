@@ -89,6 +89,11 @@ class OrderRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_order_status(self, order_id: UUID) -> Optional[OrderStatusEnum]:
+        """Status atual lido do banco, ignorando o cache do identity map."""
+        result = await self.session.execute(select(Order.status).where(Order.id == order_id))
+        return result.scalar_one_or_none()
+
     async def get_transaction_for_order(self, order_id: UUID) -> Optional[Transaction]:
         query = select(Transaction).where(Transaction.order_id == order_id).with_for_update()
         result = await self.session.execute(query)

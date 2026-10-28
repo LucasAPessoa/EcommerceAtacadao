@@ -18,7 +18,10 @@ from src.models.enums import (
     TransactionStatusEnum,
 )
 from src.schemas.sales.checkout_schema import CheckoutConfirmSchema, MercadoPagoCheckoutSchema
-from src.services.sales.mercado_pago_service import MercadoPagoCheckoutService
+from src.services.sales.mercado_pago_service import (
+    MercadoPagoCheckoutService,
+    MercadoPagoWebhookError,
+)
 
 
 def checkout_input() -> CheckoutConfirmSchema:
@@ -55,6 +58,7 @@ async def test_start_checkout_creates_order_with_snapshot_and_idempotency_key(
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_order_status=AsyncMock(return_value=OrderStatusEnum.PENDING_PAYMENT),
         get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
         count_live_active_reservations=AsyncMock(return_value=1),
         session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
@@ -131,6 +135,7 @@ async def test_preparing_checkout_retries_order_creation_with_same_key(
     )
     repository = SimpleNamespace(
         get_transaction_for_order=AsyncMock(return_value=transaction),
+        get_order_status=AsyncMock(return_value=OrderStatusEnum.PENDING_PAYMENT),
         get_earliest_active_reservation_expiry=AsyncMock(return_value=None),
         count_live_active_reservations=AsyncMock(return_value=1),
         session=SimpleNamespace(flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock()),
@@ -211,7 +216,7 @@ async def test_processed_accredited_order_confirms_reservations(
         "ORD-1",
         "ts=123,v1="
         + hmac.new(
-            b"webhook-secret", b"id:ORD-1;request-id:req-1;ts:123;", hashlib.sha256
+            b"webhook-secret", b"id:ord-1;request-id:req-1;ts:123;", hashlib.sha256
         ).hexdigest(),
         "req-1",
     )
@@ -674,3 +679,29 @@ async def test_approved_payment_with_stock_failure_creates_durable_reconciliatio
         order, OrderStatusEnum.PAYMENT_RECONCILIATION, None
     )
     repository.create_reconciliation.assert_awaited_once()
+
+
+def test_webhook_signature_uses_lowercase_data_id(client_config_override: Any) -> None:
+    client_config_override(
+        front_url="https://shop.example",
+        mercado_pago=MercadoPagoCredentials(
+            access_token=SecretStr("mp-token"),
+            webhook_secret=SecretStr("webhook-secret"),
+            notification_url="https://api.example/webhook",
+        ),
+    )
+
+    def sign(manifest: bytes) -> str:
+        return "ts=123,v1=" + hmac.new(b"webhook-secret", manifest, hashlib.sha256).hexdigest()
+
+    MercadoPagoCheckoutService.verify_webhook_signature(
+        "ORDTST01M60AQQMSTFDX2MJAFP6SFBAN",
+        sign(b"id:ordtst01m60aqqmstfdx2mjafp6sfban;request-id:req-1;ts:123;"),
+        "req-1",
+    )
+    with pytest.raises(MercadoPagoWebhookError):
+        MercadoPagoCheckoutService.verify_webhook_signature(
+            "ORDTST01M60AQQMSTFDX2MJAFP6SFBAN",
+            sign(b"id:ORDTST01M60AQQMSTFDX2MJAFP6SFBAN;request-id:req-1;ts:123;"),
+            "req-1",
+        )
