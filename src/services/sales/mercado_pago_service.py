@@ -237,7 +237,8 @@ class MercadoPagoCheckoutService:
         timestamp, received = values.get("ts"), values.get("v1")
         if not timestamp or not received:
             raise MercadoPagoWebhookError("Webhook não autorizado.")
-        manifest = f"id:{payment_id};request-id:{request_id};ts:{timestamp};"
+        # Doc MP: data.id alfanumérico entra em minúsculas no manifest.
+        manifest = f"id:{payment_id.lower()};request-id:{request_id};ts:{timestamp};"
         expected = hmac.new(
             mercado_pago.webhook_secret.get_secret_value().encode(),
             manifest.encode(),
