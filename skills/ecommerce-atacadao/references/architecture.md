@@ -8,22 +8,22 @@
 - `httpx` para integrações HTTP, atualmente Melhor Envio.
 - `uv` e Hatch para ambiente/build; pytest, Ruff e mypy para qualidade.
 
-As configurações vêm do ambiente por meio de `app.core.config`. Trate URL do
+As configurações vêm do ambiente por meio de `src/core/config.py`. Trate URL do
 banco, segredo JWT e credenciais de integrações como dados sensíveis: não os
 registre, não os inclua em exceções públicas e não os fixe no código.
 
 ## Organização
 
-O código de aplicação fica em `app/` e segue estas responsabilidades:
+O código de aplicação fica em `src/` e segue estas responsabilidades:
 
 - `main.py`: composição da aplicação, middlewares, handlers e routers.
-- `core/`: configuração, segurança e dependências transversais.
-- `database/`: sessão, base declarativa e infraestrutura de persistência.
+- `core/`: configuração, segurança, sessão do banco (`db.py`) e dependências transversais.
 - `models/`: entidades e relacionamentos SQLAlchemy.
 - `schemas/`: contratos Pydantic de entrada e saída.
 - `repositories/`: consultas e mutações de persistência, sem regra HTTP.
 - `services/`: regras de negócio e coordenação transacional/externa.
-- `routers/`: autenticação, autorização, tradução HTTP e serialização.
+- `api/v1/endpoints/`: autenticação, autorização, tradução HTTP e serialização, por domínio
+  (`admin`, `catalog`, `identity`, `integrations`, `internal`, `operations`, `sales`, `store`).
 - `integrations/`: clientes de serviços externos.
 
 Integração Bling (`src/integrations/bling/`): `state.py` (state OAuth assinado, funções

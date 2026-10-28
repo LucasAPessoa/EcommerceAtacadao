@@ -7,7 +7,7 @@ Use os comandos e versões declarados no repositório. O fluxo padrão é:
 ```bash
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app
+uv run uvicorn src.main:app
 ```
 
 Consulte `pyproject.toml`, `alembic.ini`, `.env.example` e a configuração real
@@ -64,6 +64,11 @@ no projeto, normalmente:
 uv run pytest tests
 ```
 
+Sem banco local, use env fictícias (nunca o `.env`, nem banco ou Redis reais):
+`DATABASE_URL=postgresql+asyncpg://ci:ci@localhost:5432/ci SECRET_KEY=x REFRESH_SECRET_KEY=y
+MELHOR_ENVIO_TOKEN=t MELHOR_ENVIO_USER_AGENT=a STORE_ORIGIN_ZIP_CODE=01001000`. Para
+integração, suba `postgres:16.6-alpine` e `redis:7.4-alpine` descartáveis no Docker.
+
 Para iteração, rode primeiro o arquivo/caso afetado e depois amplie:
 
 ```bash
@@ -96,7 +101,7 @@ Use a configuração do `pyproject.toml`:
 ```bash
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy app
+uv run mypy --explicit-package-bases src
 ```
 
 Nem toda mudança exige todas as verificações, mas checkout, autenticação, models
@@ -136,11 +141,7 @@ executada ao entregar.
 ## Atualização desta skill
 
 Quando a arquitetura, domínio, API ou operação mudar, atualize o arquivo de
-referência correspondente na mesma tarefa. Valide o pacote com:
-
-```bash
-python3 /home/lucas/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/ecommerce-atacadao
-```
+referência correspondente na mesma tarefa.
 
 Mantenha `SKILL.md` como roteador conciso e mova detalhes duráveis para
 `references/`. Não documente capacidade futura como se estivesse entregue.
