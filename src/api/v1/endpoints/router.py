@@ -14,6 +14,7 @@ from src.api.v1.endpoints.integrations.bling import router as bling_router
 from src.api.v1.endpoints.internal.jobs import router as internal_jobs_router
 from src.api.v1.endpoints.operations.router import operations_router
 from src.api.v1.endpoints.sales.router import sales_router
+from src.api.v1.endpoints.store.theme import router as store_theme_router
 
 # ==========================================
 # 2. ROTEADOR PRINCIPAL (Root API Router)
@@ -43,6 +44,9 @@ api_router.include_router(internal_jobs_router)
 
 # --- INTEGRAÇÕES: Bling (conexão da conta) ---
 api_router.include_router(bling_router)
+
+# --- LOJA: tema público ---
+api_router.include_router(store_theme_router)
 
 # --- PORTAL ADMIN (somente role admin) ---
 api_router.include_router(admin_router)
