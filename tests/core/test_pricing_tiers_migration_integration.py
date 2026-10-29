@@ -1,4 +1,4 @@
-"""Migração b8d4f2a6c913 (faixas por embalagem) num Postgres descartável em Docker."""
+"""Migração b8d4f2a6c913 (faixas por variação) num Postgres descartável em Docker."""
 
 import os
 import shutil
@@ -147,13 +147,13 @@ async def test_migration_pricing_tiers(pg_url) -> None:
 
         async with engine.begin() as conn:
             product_id, (v1, v2) = await _seed_product(conn)
-            # mesma min_quantity em embalagens diferentes; linha de 1 unidade aceita
+            # mesma min_quantity em variações diferentes; linha de 1 unidade aceita
             for v, q in [(v1, 1), (v1, 10), (v2, 1), (v2, 10)]:
                 await conn.execute(
                     text(_tier_sql()), {"id": uuid.uuid4(), "p": None, "v": v, "q": q}
                 )
 
-        # duplicada na mesma embalagem
+        # duplicada na mesma variação
         with pytest.raises(IntegrityError):
             async with engine.begin() as conn:
                 await conn.execute(
@@ -165,7 +165,7 @@ async def test_migration_pricing_tiers(pg_url) -> None:
                 await conn.execute(
                     text(_tier_sql()), {"id": uuid.uuid4(), "p": None, "v": v1, "q": 0}
                 )
-        # índice legado: sem embalagem, duplicata por produto recusada
+        # índice legado: sem variação, duplicata por produto recusada
         async with engine.begin() as conn:
             await conn.execute(
                 text(_tier_sql()), {"id": uuid.uuid4(), "p": product_id, "v": None, "q": 3}

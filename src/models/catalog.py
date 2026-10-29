@@ -131,7 +131,7 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     last_bling_sync: Mapped[Optional[datetime]] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(default=True)
 
-    # Preço por embalagem (vínculo produto-loja do Bling)
+    # Preço por variação (vínculo produto-loja do Bling)
     bling_store_link_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     store_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     price_source: Mapped[Optional[PriceSource]] = mapped_column(SQLEnum(PriceSource), nullable=True)
@@ -240,7 +240,7 @@ class PricingTier(Base, TimestampMixin):
     __tablename__ = "pricing_tiers"
     __table_args__ = (
         UniqueConstraint("variant_id", "min_quantity", name="uq_pricing_tiers_variant_min"),
-        # Legado (até o PR 2b): faixas sem embalagem continuam únicas por produto.
+        # Legado (até o PR 2b): faixas sem variação continuam únicas por produto.
         Index(
             "uq_pricing_tiers_product_min_legacy",
             "product_id",

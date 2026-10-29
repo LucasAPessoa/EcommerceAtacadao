@@ -1,4 +1,4 @@
-"""anúncios do Bling: faixas de preço por embalagem
+"""anúncios do Bling: faixas de preço por variação
 
 Revision ID: b8d4f2a6c913
 Revises: a7c3e91b4d20
