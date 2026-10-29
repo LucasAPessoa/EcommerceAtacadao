@@ -110,6 +110,19 @@ def test_low_stock_threshold_default_and_override() -> None:
     assert build_client_config(_settings(LOW_STOCK_THRESHOLD="12")).low_stock_threshold == 12
 
 
+def test_bling_store_id_is_optional_and_validated() -> None:
+    absent = build_client_config(_settings())
+    assert absent.bling_store_id is None
+    assert absent.bling_store_configured is False
+    configured = build_client_config(_settings(BLING_STORE_ID=" 206347377 "))
+    assert configured.bling_store_id == 206347377
+    assert configured.bling_store_configured is True
+    for bad in ("abc", "0", "-3", "1.5"):
+        with pytest.raises(ClientConfigError) as exc:
+            build_client_config(_settings(BLING_STORE_ID=bad))
+        assert [n for n, _ in exc.value.errors] == ["BLING_STORE_ID"]
+
+
 def test_low_stock_threshold_error_is_aggregated() -> None:
     with pytest.raises(ClientConfigError) as exc:
         build_client_config(_settings(LOW_STOCK_THRESHOLD="x", STORE_HANDLING_DAYS="y"))
