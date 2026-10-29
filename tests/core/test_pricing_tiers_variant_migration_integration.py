@@ -180,13 +180,12 @@ def test_backfill_assigns_tiers_to_variants_and_keeps_count(pg) -> None:
     check = _alembic(url, "check")
     assert check.returncode == 0, check.stdout + check.stderr
 
-    # NOT NULL e unicidade por variação.
     nullable = _sql(
         name,
         "SELECT is_nullable FROM information_schema.columns "
         "WHERE table_name='pricing_tiers' AND column_name='variant_id'",
     )
-    assert nullable == "NO"
+    assert nullable == "YES"
 
     # Downgrade volta ao esquema anterior sem perder faixas.
     down = _alembic(url, "downgrade", BEFORE)
@@ -194,7 +193,7 @@ def test_backfill_assigns_tiers_to_variants_and_keeps_count(pg) -> None:
     assert int(_sql(name, "SELECT count(*) FROM pricing_tiers")) == before
 
 
-def test_orphan_tier_fails_explicitly_without_deleting(pg) -> None:
+def test_orphan_tier_keeps_null_variant_without_deleting(pg) -> None:
     name, url = pg
     assert _alembic(url, "upgrade", BEFORE).returncode == 0
     s, pid = _product("Sem variação", "SEM")
@@ -202,10 +201,6 @@ def test_orphan_tier_fails_explicitly_without_deleting(pg) -> None:
 
     result = _alembic(url, "upgrade", "head")
 
-    assert result.returncode != 0
-    assert "sem nenhuma variação" in result.stderr
-    # Migração transacional: faixa preservada e revisão não avançou.
-    assert int(_sql(name, "SELECT count(*) FROM pricing_tiers")) == 1
-    current = _alembic(url, "current")
-    assert BEFORE in current.stdout + current.stderr
-    assert AFTER not in current.stdout + current.stderr
+    assert result.returncode == 0, result.stderr
+    assert _sql(name, "SELECT count(*) FROM pricing_tiers WHERE variant_id IS NULL") == "1"
+    assert _alembic(url, "check").returncode == 0

@@ -46,18 +46,8 @@ def upgrade() -> None:
     )
     op.execute(_BACKFILL)
 
-    orphans = (
-        op.get_bind()
-        .execute(sa.text("SELECT count(*) FROM pricing_tiers WHERE variant_id IS NULL"))
-        .scalar_one()
-    )
-    if orphans:
-        raise RuntimeError(
-            f"{orphans} faixa(s) de preço pertencem a produtos sem nenhuma variação; "
-            "corrija ou remova-as manualmente antes de migrar (nada foi apagado)."
-        )
-
-    op.alter_column("pricing_tiers", "variant_id", nullable=False)
+    # variant_id continua NULL para faixa de produto sem variação (não se aplica; nada é apagado).
+    # O NOT NULL entra em migração própria, depois que o código passar a preencher variant_id.
     op.create_foreign_key(
         "fk_pricing_tiers_variant_id_product_variants",
         "pricing_tiers",

@@ -229,14 +229,15 @@ class PricingTier(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
     product_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("products.id"))
-    variant_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), index=True
+    # Nullable até o PR de código (seed/serviços); faixa sem variação não se aplica.
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), index=True, nullable=True
     )
     min_quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     product: Mapped["Product"] = relationship(back_populates="pricing_tiers")
-    variant: Mapped["ProductVariant"] = relationship(back_populates="pricing_tiers")
+    variant: Mapped[Optional["ProductVariant"]] = relationship(back_populates="pricing_tiers")
 
 
 class ProductReview(Base, TimestampMixin):
