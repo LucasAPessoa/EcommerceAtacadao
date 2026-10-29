@@ -210,7 +210,7 @@ class StorePricingService:
             if variant.bling_store_link_id is not None:
                 link = await self.client.get_store_link(variant.bling_store_link_id)
                 await self.client.put_store_link(
-                    link.id, store_link_body_with_price(link, unit_price)
+                    link.id, store_link_body_with_price(link, unit_price, variant.bling_sku)
                 )
                 return None
             else:
@@ -219,7 +219,7 @@ class StorePricingService:
                         "produto": {"id": variant.bling_id},
                         "loja": {"id": store_id},
                         "preco": json_price(unit_price),
-                        "codigo": "0",
+                        "codigo": variant.bling_sku or "0",
                         "precoPromocional": 0,
                     }
                 )

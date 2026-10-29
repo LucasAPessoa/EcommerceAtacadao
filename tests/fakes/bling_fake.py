@@ -183,11 +183,27 @@ async def get_store_link(request: Request, link_id: int):
     return {"data": link}
 
 
+def _invalid_code(body: dict) -> JSONResponse | None:
+    """Como o Bling real: `codigo` vazio ou "0" conta como `idProdutoLoja` ausente (121)."""
+    if str(body.get("codigo") or "").strip() in ("", "0"):
+        msg = "O campo idProdutoLoja é obrigatório."
+        error = {
+            "type": "VALIDATION_ERROR",
+            "message": "Erro de validação",
+            "description": "Erro de validação",
+            "fields": [{"code": 121, "msg": msg, "element": "idProdutoLoja"}],
+        }
+        return JSONResponse({"error": error}, 400)
+    return None
+
+
 @app.put("/Api/v3/produtos/lojas/{link_id}")
 async def put_store_link(request: Request, link_id: int):
     if failure := _catalog_guard(request, f"lojas:put:{link_id}"):
         return failure
     body = await request.json()
+    if invalid := _invalid_code(body):
+        return invalid
     _calls.append({"method": "PUT", "path": f"/produtos/lojas/{link_id}", "body": body})
     if (link := _find_link(link_id)) is None:
         return JSONResponse({"error": {"type": "RESOURCE_NOT_FOUND", "message": "nf"}}, 404)
@@ -201,6 +217,8 @@ async def create_store_link(request: Request):
     if failure := _catalog_guard(request, "lojas:post"):
         return failure
     body = await request.json()
+    if invalid := _invalid_code(body):
+        return invalid
     _calls.append({"method": "POST", "path": "/produtos/lojas", "body": body})
     link_id = max([link["id"] for link in _config["store_links"]], default=1_029_000_000) + 1
     _config["store_links"].append({**body, "id": link_id})

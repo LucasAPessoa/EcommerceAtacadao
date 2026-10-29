@@ -324,9 +324,24 @@ def json_price(price: Decimal) -> float:
     return value
 
 
-def store_link_body_with_price(link: BlingStoreLink, price: Decimal) -> dict[str, Any]:
-    """Corpo do PUT: o vínculo lido, intacto, trocando só `preco` (FR-013)."""
-    return {**link.raw, "preco": json_price(price)}
+def store_link_code(current: Any, sku: Optional[str]) -> Any:
+    """`codigo` do vínculo: o Bling recusa vazio ou "0" (erro 121, `idProdutoLoja`).
+
+    Mantém o código atual quando válido; senão usa o SKU da variação."""
+    if str(current or "").strip() in ("", "0") and sku:
+        return sku
+    return current
+
+
+def store_link_body_with_price(
+    link: BlingStoreLink, price: Decimal, sku: Optional[str] = None
+) -> dict[str, Any]:
+    """Corpo do PUT: o vínculo lido, trocando `preco` (FR-013) e, se vazio ou "0", `codigo`."""
+    return {
+        **link.raw,
+        "preco": json_price(price),
+        "codigo": store_link_code(link.raw.get("codigo"), sku),
+    }
 
 
 # Parâmetros de URL pré-assinada (S3 v2/v4) que mudam a cada leitura do Bling (R7).

@@ -322,14 +322,15 @@ async def test_invalid_tiers_change_nothing(
 async def test_changed_price_with_own_link_puts_read_body(
     factory: Factory, fake: httpx.AsyncClient
 ) -> None:
-    await _setup_bling(fake, [_bling_link(10.0)])
+    link = {**_bling_link(10.0), "codigo": "LOJA-1"}
+    await _setup_bling(fake, [link])
     product_id, variant_id = await _seed(factory)
     await _save(factory, product_id, variant_id, "12.50", ((10, "11.00"),))
 
     calls = await _calls(fake)
     assert [c["method"] for c in calls] == ["PUT"]
     assert calls[0]["path"] == f"/produtos/lojas/{LINK_ID}"
-    assert calls[0]["body"] == {**_bling_link(10.0), "preco": 12.5}  # só o preço muda
+    assert calls[0]["body"] == {**link, "preco": 12.5}  # só o preço muda
     variant = await _variant(factory, variant_id)
     assert _table(variant) == [(1, Decimal("12.50")), (10, Decimal("11.00"))]
     assert variant.base_price == Decimal("12.50") and variant.store_price == Decimal("12.50")
@@ -351,7 +352,7 @@ async def test_changed_price_with_inherited_link_creates_own_link(
         "produto": {"id": VARIANT_BLING_ID},
         "loja": {"id": STORE_ID},
         "preco": 12.5,
-        "codigo": "0",
+        "codigo": "ARZ-5",
         "precoPromocional": 0,
     }
     variant = await _variant(factory, variant_id)
@@ -499,3 +500,40 @@ async def test_changed_line_one_during_bling_call_is_conflict(
 
     assert error.value.message == MSG_STALE
     assert _table(await _variant(factory, variant_id)) == [(1, Decimal("11.00"))]
+
+
+# ------------------------------------------------ `codigo` do vínculo (Bling real: 121)
+
+
+async def test_put_sends_variant_sku_when_link_code_is_zero(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _setup_bling(fake, [_bling_link(10.0)])  # codigo "0", como na tela do Bling
+    product_id, variant_id = await _seed(factory)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    calls = await _calls(fake)
+    assert [c["body"]["codigo"] for c in calls] == ["ARZ-5"]
+    assert calls[0]["body"]["preco"] == 12.5
+
+
+async def test_put_keeps_valid_link_code(factory: Factory, fake: httpx.AsyncClient) -> None:
+    await _setup_bling(fake, [{**_bling_link(10.0), "codigo": "LOJA-1"}])
+    product_id, variant_id = await _seed(factory)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    assert [c["body"]["codigo"] for c in await _calls(fake)] == ["LOJA-1"]
+
+
+async def test_bling_validation_error_is_bad_gateway_with_field_message(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _setup_bling(fake, [_bling_link(10.0)])
+    product_id, variant_id = await _seed(factory)
+    async with factory.begin() as session:  # sem SKU para usar: o código segue "0" e o Bling recusa
+        await session.execute(
+            text("UPDATE product_variants SET bling_sku = '' WHERE id = :v"), {"v": variant_id}
+        )
+    with pytest.raises(StorePricingBlingError, match="idProdutoLoja é obrigatório"):
+        await _save(factory, product_id, variant_id, "12.50")
+    assert _table(await _variant(factory, variant_id)) == [(1, Decimal("10.00"))]
