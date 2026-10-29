@@ -133,7 +133,9 @@ class AdminProductRepository:
         if f.warning is not None:
             stmt = stmt.where(ex.count_of(agg, _WARNING_COLUMNS[f.warning]) > 0)
         if f.listed is not None:
-            stmt = stmt.where(Product.store_listed.is_(f.listed))
+            stmt = stmt.where(
+                _flag(and_(Product.store_listed.is_(True), Product.is_active.is_(True)), f.listed)
+            )
         return stmt
 
     def _order_by(self, f: ProductListFilters, agg: Any) -> list[Any]:
@@ -162,7 +164,9 @@ class AdminProductRepository:
                 Product.code,
                 Product.name.label("name"),
                 Product.name.label("bling_name"),
-                Product.store_listed,
+                and_(Product.store_listed.is_(True), Product.is_active.is_(True)).label(
+                    "store_listed"
+                ),
                 Product.is_active,
                 self._visible().label("visible"),
                 self._featured().label("featured"),

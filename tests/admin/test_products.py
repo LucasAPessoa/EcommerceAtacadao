@@ -200,6 +200,7 @@ class TestPricingFiltersAndWarnings:
             "Tudo", variants=[V(status="PENDING", source="GENERAL", tiers=((2, "10.00"),))]
         )
         await seed.product("Fora", listed=False)
+        await seed.product("Inativo", active=False, listed=True)
 
         items = {
             i["name"].removeprefix(f"{seed.tag} "): i
@@ -210,6 +211,11 @@ class TestPricingFiltersAndWarnings:
         assert items["Tudo"]["pricing_status"] == "pending"
         assert items["Tudo"]["warnings"] == ["tier_not_below_unit", "store_price_missing"]
         assert items["Fora"]["store_listed"] is False
+        assert items["Inativo"]["store_listed"] is False  # inativo não conta como publicado
+        listed = await _list(client, admin_token, seed, listed="true")
+        assert "Inativo" not in {
+            i["name"].removeprefix(f"{seed.tag} ") for i in listed.json()["data"]
+        }
 
     async def test_detail_variant_pricing_fields(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder

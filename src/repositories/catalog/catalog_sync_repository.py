@@ -279,7 +279,7 @@ class CatalogSyncRepository:
         result = await self.session.execute(
             update(Product)
             .where(Product.bling_id.is_(None), Product.is_active.is_(True))
-            .values(is_active=False, updated_at=datetime.utcnow())
+            .values(is_active=False, store_listed=False, updated_at=datetime.utcnow())
         )
         return int(result.rowcount or 0)  # type: ignore[attr-defined]
 

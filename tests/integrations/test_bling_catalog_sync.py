@@ -1015,12 +1015,14 @@ async def test_legacy_products_without_bling_id_are_deactivated_after_full_scan(
     factory: Factory, fake: httpx.AsyncClient
 ) -> None:
     async with factory.begin() as session:
-        session.add(Product(name="Seed legado", status="A", is_active=True))
+        session.add(Product(name="Seed legado", status="A", is_active=True, store_listed=True))
         session.add(Product(name="Seed já inativo", status="A", is_active=False))
     await _imported(factory, fake, _product(1))
     async with factory() as session:
         rows = (await session.execute(select(Product.name, Product.is_active))).all()
         assert dict(rows) == {"Seed legado": False, "Seed já inativo": False, "Arroz 5kg": True}
+        listed = (await session.execute(select(Product.name, Product.store_listed))).all()
+        assert dict(listed)["Seed legado"] is False  # legado desativado sai da loja
     runs = await _runs(factory)
     assert runs[0].deactivated == 1
 
