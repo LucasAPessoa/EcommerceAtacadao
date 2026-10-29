@@ -6,6 +6,8 @@
 
 **Status**: Draft
 
+> **Atualização 2026-10-28 (spec 008, back #128):** a importação passa a partir dos vínculos produto–loja da loja do site (só produtos vinculados entram). O FR-010 (preço só na criação) foi substituído: a linha de 1 unidade acompanha o preço do vínculo. O FR-012 continua (anúncios de marketplace fora). Ver `specs/008-anuncios-bling/`.
+
 **Input**: User description: "Importar o catálogo do Bling para a loja de forma idempotente, usando a conexão já existente. Extrair produtos, variações, categorias, saldo de estoque, preço, imagens, peso e medidas; gravar por identificador do Bling; categorias do Bling viram categorias do site. Desativar o que sumiu ou foi inativado no Bling. Produto sem peso/medidas fica fora de venda. Registrar cada execução. Duas execuções seguidas sem mudança no Bling não alteram nada."
 
 **Issues**: back #54. Relacionadas: #56 (origem do preço por produto), #53/spec 003 (catálogo somente leitura), spec 001 (conexão com o Bling).

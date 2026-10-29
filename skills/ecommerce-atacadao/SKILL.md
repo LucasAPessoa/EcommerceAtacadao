@@ -52,6 +52,12 @@ importação do catálogo Bling; portal admin em `/api/v1/admin/*` (spec 007:
 dashboard, produtos, pedidos, moderação, Bling); camada de apresentação por
 produto que a sync do Bling não sobrescreve; tema da loja em `/api/v1/store/theme`.
 
+Em implementação (spec 008, back #128): o site é a loja do tipo "API" no Bling;
+só produtos vinculados a ela aparecem; cada variação tem tabela de preços no
+site (linha de 1 unidade = preço do vínculo, gravada; faixas criadas no admin);
+editar a linha de 1 unidade grava o preço no vínculo do Bling; confirmação de
+preços automática ou manual. Até o PR 2 da 008 entrar, vale o fluxo antigo.
+
 Ainda não ponta a ponta: sync bidirecional e webhooks do Bling, entrega regional
 por CEP, etiquetas e coleta, remessa/chargeback/nota fiscal, seções "em breve" do
 portal (clientes, entrega própria, despacho, configurações), workers e

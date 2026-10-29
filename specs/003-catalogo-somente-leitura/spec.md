@@ -6,6 +6,8 @@
 
 **Status**: Draft
 
+> **Atualização 2026-10-28 (spec 008, back #128):** o catálogo continua somente leitura, com uma exceção: o preço do vínculo do produto com a loja do site no Bling é editável pelo site e gravado no Bling. Ver `specs/008-anuncios-bling/`.
+
 **Input**: User description: "O site não pode alterar produtos; tudo vem do Bling. Exceção: preço do site. Remover as rotas de escrita das entidades vindas do Bling, mantendo leitura e moderação de perguntas/avaliações."
 
 **Issues**: back #53. Relacionadas: #54 (importação Bling → catálogo), #56 (origem do preço por produto). Front: issue a abrir para o admin de catálogo (contrato muda).
