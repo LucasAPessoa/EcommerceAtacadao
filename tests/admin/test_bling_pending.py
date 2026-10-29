@@ -11,7 +11,6 @@ from tests.admin.conftest import Seeder, V
 from tests.conftest import API_V1_PREFIX, auth_headers
 
 URL = f"{API_V1_PREFIX}/admin/bling/pending"
-VARIANTS = f"{API_V1_PREFIX}/catalog/product-variants"
 
 
 async def _mine(
@@ -94,7 +93,7 @@ async def test_deleted_product_and_deleted_variant_are_not_listed(
     assert await _mine(client, admin_token, seed) == []
 
 
-async def test_effective_name_uses_site_presentation(
+async def test_name_is_the_bling_name_not_the_old_override(
     client: httpx.AsyncClient, admin_token: str, seed: Seeder
 ) -> None:
     await seed.product(
@@ -103,24 +102,7 @@ async def test_effective_name_uses_site_presentation(
 
     items = await _mine(client, admin_token, seed)
 
-    assert [i["product_name"] for i in items] == [f"{seed.tag} Site"]
-
-
-async def test_variant_leaves_list_after_price_fixed_via_patch(
-    client: httpx.AsyncClient, admin_token: str, seed: Seeder
-) -> None:
-    await seed.product("some", variants=[V(active=False, price="0", sku="PATCH-1")])
-    items = await _mine(client, admin_token, seed)
-    assert len(items) == 1
-
-    resp = await client.patch(
-        f"{VARIANTS}/{items[0]['variant_id']}",
-        json={"base_price": "12.50"},
-        headers=auth_headers(admin_token),
-    )
-
-    assert resp.status_code == 200, resp.text
-    assert await _mine(client, admin_token, seed) == []
+    assert [i["product_name"] for i in items] == [f"{seed.tag} bling"]
 
 
 @pytest.mark.parametrize("limit", [0, 101])

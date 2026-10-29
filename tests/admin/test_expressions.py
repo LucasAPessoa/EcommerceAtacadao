@@ -15,7 +15,6 @@ from src.integrations.bling.catalog import (
     INCOMPLETE_WEIGHT,
 )
 from src.models.catalog import Product, ProductVariant
-from src.models.catalog_presentation import ProductSitePresentation
 from src.repositories.admin import _expressions as ex
 from tests.admin.conftest import Seeder, V
 
@@ -85,26 +84,45 @@ async def test_pending_reason_only_for_inactive_variant_of_live_product(
     assert await _reasons(db, deleted) == {"0": None}
 
 
-async def test_effective_name_and_customized(db: AsyncEngine, seed: Seeder) -> None:
-    plain = await seed.product("Plain")
-    renamed = await seed.product("Renamed", presentation={"name": "Nome do site"})
-    cats = await seed.product("Cats", presentation={"categories_locked": True})
-    hidden_only = await seed.product("Hidden", presentation={"visible": False})
-    desc = await seed.product("Desc", presentation={"description": "<p>x</p>"})
+async def test_published_and_price_warnings(db: AsyncEngine, seed: Seeder) -> None:
+    tag = seed.tag
+    listed = await seed.product(
+        variants=[
+            V(sku=f"{tag}-ok"),
+            V(sku=f"{tag}-pending", status="PENDING"),
+            V(sku=f"{tag}-inactive", active=False),
+            V(sku=f"{tag}-noline", line_one=False),
+            V(sku=f"{tag}-tier", tiers=((5, "10.00"), (9, "7.00"))),
+            V(sku=f"{tag}-general", source="GENERAL"),
+            V(sku=f"{tag}-zero", price="0.00", source="GENERAL", line_one=False, active=False),
+        ]
+    )
+    unlisted = await seed.product(listed=False, variants=[V(sku=f"{tag}-out", source="GENERAL")])
 
     async with AsyncSession(db) as session:
         rows = await session.execute(
-            select(Product.id, Product.name, ex.effective_name(), ex.customized())
-            .outerjoin(ProductSitePresentation, ProductSitePresentation.product_id == Product.id)
-            .where(Product.id.in_([plain, renamed, cats, hidden_only, desc]))
+            select(
+                ProductVariant.bling_sku,
+                ex.published(),
+                ex.pricing_pending(),
+                ex.tier_not_below_unit(),
+                ex.store_price_missing(),
+                ex.price_not_set(),
+            )
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(Product.id.in_([listed, unlisted]))
         )
-        got = {r[0]: (r[1], r[2], r[3]) for r in rows.all()}
+        got = {r[0].removeprefix(f"{tag}-"): tuple(r[1:]) for r in rows.all()}
 
-    assert got[plain][1] == got[plain][0] and got[plain][2] is False
-    assert got[renamed][1] == "Nome do site" and got[renamed][2] is True
-    assert got[cats][2] is True
-    assert got[hidden_only][2] is False
-    assert got[desc][2] is True
+    # (publicada, pendente, faixa>=1un, preço da loja ausente, preço não definido)
+    assert got["ok"] == (True, False, False, False, False)
+    assert got["pending"] == (True, True, False, False, False)
+    assert got["inactive"] == (False, False, False, False, False)
+    assert got["noline"] == (False, False, False, False, False)
+    assert got["tier"] == (True, False, True, False, False)
+    assert got["general"] == (True, False, False, True, False)
+    assert got["zero"] == (False, False, False, False, True)
+    assert got["out"] == (False, False, False, False, False)  # produto fora da loja
 
 
 async def test_variant_aggregates(db: AsyncEngine, seed: Seeder) -> None:

@@ -36,6 +36,10 @@ class V:
     gtin: Optional[str] = None
     deleted: bool = False
     images: list[tuple[str, bool]] = field(default_factory=list)
+    status: str = "CONFIRMED"  # pricing_status
+    source: Optional[str] = "VARIANT_LINK"  # price_source (None = sem vínculo)
+    line_one: bool = True  # cria a linha de 1 unidade (variação publicada)
+    tiers: tuple[tuple[int, str], ...] = ()  # faixas a partir de 2 unidades
 
 
 @pytest_asyncio.fixture
@@ -53,6 +57,7 @@ class Seeder:
         self.tag = f"zt{uuid.uuid4().hex[:10]}"
         self.products: list[uuid.UUID] = []
         self.categories: list[uuid.UUID] = []
+        self.variant_ids: dict[uuid.UUID, list[uuid.UUID]] = {}
 
     async def category(self, name: str, *, active: bool = True, deleted: bool = False) -> uuid.UUID:
         cid = uuid.uuid4()
@@ -85,7 +90,7 @@ class Seeder:
         updated_at: datetime = NOW,
         presentation: Optional[dict[str, Any]] = None,
         site_categories: tuple[uuid.UUID, ...] = (),
-        tiers: tuple[tuple[int, str], ...] = (),
+        listed: bool = True,
     ) -> uuid.UUID:
         pid = uuid.uuid4()
         code = code or f"{self.tag}-{pid.hex[:8]}"
@@ -94,8 +99,8 @@ class Seeder:
                 text(
                     "INSERT INTO products (id, name, code, is_active, store_listed, deleted_at,"
                     " description, brand, unit, status, created_at, updated_at)"
-                    " VALUES (:id, :n, :c, :a, true, :d, 'desc bling', 'Marca', 'UN', 'A', :t,"
-                    " :u)"
+                    " VALUES (:id, :n, :c, :a, :listed, :d, 'desc bling', 'Marca', 'UN', 'A',"
+                    " :t, :u)"
                 ),
                 {
                     "id": pid,
@@ -105,11 +110,14 @@ class Seeder:
                     "d": NOW if deleted else None,
                     "t": NOW,
                     "u": updated_at,
+                    "listed": listed,
                 },
             )
             self.products.append(pid)
+            self.variant_ids[pid] = []
             for n, v in enumerate(variants if variants is not None else [V()]):
                 vid = uuid.uuid4()
+                self.variant_ids[pid].append(vid)
                 await conn.execute(
                     text(
                         "INSERT INTO product_variants (id, product_id, bling_sku, variation_name,"
@@ -117,7 +125,7 @@ class Seeder:
                         " width_cm, length_cm, pricing_status, store_price, price_source,"
                         " pricing_confirmed_at, deleted_at, created_at, updated_at) VALUES"
                         " (:id, :p, :sku, 'v', :gtin, :price, :stock, :a, :w, :h, :wd, :l,"
-                        " 'CONFIRMED', :price, 'VARIANT_LINK', :t, :d, :t, :t)"
+                        " :pstatus, :price, :source, :t, :d, :t, :t)"
                     ),
                     {
                         "id": vid,
@@ -133,15 +141,19 @@ class Seeder:
                         "l": v.length,
                         "d": NOW if v.deleted else None,
                         "t": NOW,
+                        "pstatus": v.status,
+                        "source": v.source,
                     },
                 )
-                await conn.execute(
-                    text(
-                        "INSERT INTO pricing_tiers (id, variant_id, min_quantity, unit_price,"
-                        " created_at, updated_at) VALUES (:id, :v, 1, :u, :t, :t)"
-                    ),
-                    {"id": uuid.uuid4(), "v": vid, "u": Decimal(v.price), "t": NOW},
-                )
+                rows = [(1, v.price)] if v.line_one else []
+                for qty, price in [*rows, *v.tiers]:
+                    await conn.execute(
+                        text(
+                            "INSERT INTO pricing_tiers (id, variant_id, min_quantity, unit_price,"
+                            " created_at, updated_at) VALUES (:id, :v, :q, :u, :t, :t)"
+                        ),
+                        {"id": uuid.uuid4(), "v": vid, "q": qty, "u": Decimal(price), "t": NOW},
+                    )
                 for k, (url, main) in enumerate(v.images):
                     await conn.execute(
                         text(
@@ -162,14 +174,6 @@ class Seeder:
                         " VALUES (:p, :c)"
                     ),
                     {"p": pid, "c": cid},
-                )
-            for qty, price in tiers:
-                await conn.execute(
-                    text(
-                        "INSERT INTO pricing_tiers (id, product_id, min_quantity, unit_price,"
-                        " created_at, updated_at) VALUES (:id, :p, :q, :u, :t, :t)"
-                    ),
-                    {"id": uuid.uuid4(), "p": pid, "q": qty, "u": Decimal(price), "t": NOW},
                 )
             if presentation is not None:
                 values = {

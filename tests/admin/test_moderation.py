@@ -68,7 +68,7 @@ class TestReviews:
         assert body["meta"] == {"total": 1, "skip": 0, "limit": 25}
         assert item["rating"] == 4 and item["comment"] == "muito bom"
         assert item["is_approved"] is False
-        assert item["product"] == {"id": str(pid), "name": "Arroz Site"}
+        assert item["product"] == {"id": str(pid), "name": f"{seed_clean.tag} Arroz"}
         assert set(item["author"]) == {"id", "full_name"}
 
         patch = await client.patch(

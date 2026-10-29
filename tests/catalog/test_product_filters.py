@@ -20,6 +20,7 @@ FILTERED = [
     ("product-images", "product_id"),
     ("product-images", "variant_id"),
     ("pricing-tiers", "product_id"),
+    ("pricing-tiers", "variant_id"),
     ("product-reviews", "product_id"),
     ("product-questions", "product_id"),
     ("product-variants", "product_id"),
@@ -118,25 +119,27 @@ class TestVariantsAndImages:
 
 class TestPricingTiers:
     @pytest.mark.asyncio
-    async def test_filtered_sorted_and_isolated(self, client: httpx.AsyncClient):
+    async def test_filtered_by_variant_and_product_sorted(self, client: httpx.AsyncClient):
         tiers = await _list(client, "pricing-tiers")
+        assert all(t["variant_id"] for t in tiers)  # nenhuma faixa só com produto
         counts: Dict[str, int] = {}
         for t in tiers:
-            if t["product_id"] is None:  # linha de 1 unidade da variação (spec 008)
-                continue
-            counts[t["product_id"]] = counts.get(t["product_id"], 0) + 1
-        product_id = max(counts, key=lambda k: counts[k])
-        got = await _list(client, "pricing-tiers", product_id=product_id)
-        assert len(got) == counts[product_id]
-        assert all(t["product_id"] == product_id for t in got)
+            counts[t["variant_id"]] = counts.get(t["variant_id"], 0) + 1
+        variant_id = max(counts, key=lambda k: counts[k])
+        got = await _list(client, "pricing-tiers", variant_id=variant_id)
+        assert len(got) == counts[variant_id] > 1
+        assert all(t["variant_id"] == variant_id for t in got)
         quantities = [t["min_quantity"] for t in got]
-        assert quantities == sorted(quantities)
+        assert quantities == sorted(quantities) and quantities[0] == 1
+
+        variants = await _list(client, "product-variants")
+        product_id = next(v["product_id"] for v in variants if v["id"] == variant_id)
+        by_product = await _list(client, "pricing-tiers", product_id=product_id)
+        assert {t["id"] for t in got} <= {t["id"] for t in by_product}
 
     @pytest.mark.asyncio
-    async def test_product_without_tiers_is_empty(self, client: httpx.AsyncClient):
-        with_tiers = {t["product_id"] for t in await _list(client, "pricing-tiers")}
-        product = next(p for p in await _products(client) if p["id"] not in with_tiers)
-        assert await _list(client, "pricing-tiers", product_id=product["id"]) == []
+    async def test_unknown_product_is_empty(self, client: httpx.AsyncClient):
+        assert await _list(client, "pricing-tiers", product_id=str(uuid.uuid4())) == []
 
 
 class TestQuestions:

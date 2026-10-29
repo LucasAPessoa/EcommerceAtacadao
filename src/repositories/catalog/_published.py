@@ -3,6 +3,7 @@
 from typing import Any
 
 from sqlalchemy import and_, exists
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.catalog import PricingTier, Product, ProductVariant
@@ -10,7 +11,8 @@ from src.models.enums import PricingStatus
 
 
 def has_unit_price_line(variant: Any = ProductVariant) -> ColumnElement[bool]:
-    return exists().where(PricingTier.variant_id == variant.id, PricingTier.min_quantity == 1)
+    line = aliased(PricingTier)  # alias: a consulta externa pode já ter PricingTier no FROM
+    return exists().where(line.variant_id == variant.id, line.min_quantity == 1)
 
 
 def published(variant: Any = ProductVariant, product: Any = Product) -> ColumnElement[bool]:
