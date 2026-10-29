@@ -92,9 +92,10 @@ class Seeder:
         async with self.engine.begin() as conn:
             await conn.execute(
                 text(
-                    "INSERT INTO products (id, name, code, is_active, deleted_at, description,"
-                    " brand, unit, status, created_at, updated_at)"
-                    " VALUES (:id, :n, :c, :a, :d, 'desc bling', 'Marca', 'UN', 'A', :t, :u)"
+                    "INSERT INTO products (id, name, code, is_active, store_listed, deleted_at,"
+                    " description, brand, unit, status, created_at, updated_at)"
+                    " VALUES (:id, :n, :c, :a, true, :d, 'desc bling', 'Marca', 'UN', 'A', :t,"
+                    " :u)"
                 ),
                 {
                     "id": pid,
@@ -113,9 +114,10 @@ class Seeder:
                     text(
                         "INSERT INTO product_variants (id, product_id, bling_sku, variation_name,"
                         " gtin, base_price, stock_quantity, is_active, weight_kg, height_cm,"
-                        " width_cm, length_cm, deleted_at, created_at, updated_at) VALUES"
-                        " (:id, :p, :sku, 'v', :gtin, :price, :stock, :a, :w, :h, :wd, :l, :d,"
-                        " :t, :t)"
+                        " width_cm, length_cm, pricing_status, store_price, price_source,"
+                        " pricing_confirmed_at, deleted_at, created_at, updated_at) VALUES"
+                        " (:id, :p, :sku, 'v', :gtin, :price, :stock, :a, :w, :h, :wd, :l,"
+                        " 'CONFIRMED', :price, 'VARIANT_LINK', :t, :d, :t, :t)"
                     ),
                     {
                         "id": vid,
@@ -132,6 +134,13 @@ class Seeder:
                         "d": NOW if v.deleted else None,
                         "t": NOW,
                     },
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO pricing_tiers (id, variant_id, min_quantity, unit_price,"
+                        " created_at, updated_at) VALUES (:id, :v, 1, :u, :t, :t)"
+                    ),
+                    {"id": uuid.uuid4(), "v": vid, "u": Decimal(v.price), "t": NOW},
                 )
                 for k, (url, main) in enumerate(v.images):
                     await conn.execute(
@@ -192,6 +201,13 @@ class Seeder:
                 await conn.execute(
                     text(
                         "DELETE FROM product_images WHERE variant_id IN"
+                        " (SELECT id FROM product_variants WHERE product_id = :p)"
+                    ),
+                    {"p": pid},
+                )
+                await conn.execute(
+                    text(
+                        "DELETE FROM pricing_tiers WHERE variant_id IN"
                         " (SELECT id FROM product_variants WHERE product_id = :p)"
                     ),
                     {"p": pid},

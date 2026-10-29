@@ -88,7 +88,7 @@ curl -fsS "$BLING_FAKE_URL/health" >/dev/null || { echo "timeout aguardando o Bl
   tests/catalog/test_catalog.py tests/catalog/test_product_filters.py \
   tests/catalog/test_product_main_image.py \
   tests/integrations/test_bling_catalog_sync.py tests/integrations/test_bling_catalog_sync_api.py \
-  tests/integrations/test_bling_connection.py \
+  tests/integrations/test_bling_connection.py tests/integrations/test_store_pricing.py \
   tests/identity/test_addresses.py tests/identity/test_auth.py tests/identity/test_users.py \
   tests/operations/test_shipping.py \
   tests/sales/test_cart.py tests/sales/test_checkout.py tests/sales/test_orders.py \
