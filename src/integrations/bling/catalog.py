@@ -1,4 +1,4 @@
-"""Leitura do catálogo do Bling: paginação, normalização e hash de conteúdo (spec 006).
+"""Leitura do catálogo do Bling: vínculos, detalhes, normalização e hash (specs 006 e 008).
 
 Todo formato do Bling (nomes de campos, estrutura de mídia, saldos) fica isolado aqui; o
 restante do sistema só conhece as dataclasses internas. Comportamento real observado em
@@ -9,11 +9,10 @@ Nunca registra token nem corpo de resposta.
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit
-from zoneinfo import ZoneInfo
 
 from src.integrations.bling.client import BlingClient
 from src.integrations.bling.errors import BlingError
@@ -26,18 +25,11 @@ PRODUCTS_PATH = "/produtos"
 STORE_LINKS_PATH = "/produtos/lojas"  # vínculos produto-loja (spec 008)
 BALANCES_PATH = "/estoques/saldos"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-_BLING_TZ = ZoneInfo("America/Sao_Paulo")
-
-
-def format_changed_since(value: datetime) -> str:
-    """UTC (naive ou aware) -> horário de São Paulo, o fuso em que o Bling lê o filtro."""
-    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-    return aware.astimezone(_BLING_TZ).strftime(_DATE_FORMAT)
 
 
 INCOMPLETE_WEIGHT = "incompleto_peso"
 INCOMPLETE_DIMENSIONS = "incompleto_medidas"
-INCOMPLETE_PRICE = "incompleto_preco"  # preço vigente do site ausente ou <= 0
+INCOMPLETE_PRICE = "incompleto_preco"  # vínculo e preço geral do Bling com valor 0 (spec 008)
 
 
 class BlingCatalogFormatError(BlingError):
@@ -52,20 +44,6 @@ class BlingCategory:
     id: int
     name: str
     parent_id: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class BlingListItem:
-    """Item da varredura (`GET /produtos`). Variações (com `idProdutoPai`) são descartadas."""
-
-    id: int
-    active: bool
-
-
-@dataclass(frozen=True)
-class BlingProductPage:
-    items: tuple[BlingListItem, ...]
-    has_more: bool
 
 
 @dataclass(frozen=True)
@@ -421,21 +399,6 @@ class BlingCatalogClient:
             if category_id is not None and name:
                 categories.append(BlingCategory(category_id, name, _int(row.get("idCategoriaPai"))))
         return categories, len(rows) >= PAGE_SIZE
-
-    async def list_products_page(
-        self, page: int, *, changed_since: Optional[datetime] = None
-    ) -> BlingProductPage:
-        params: dict[str, Any] = {"pagina": page, "limite": PAGE_SIZE}
-        if changed_since is not None:
-            params["dataAlteracaoInicial"] = format_changed_since(changed_since)
-        rows = _rows(await self.client.request("GET", PRODUCTS_PATH, params=params))
-        items = []
-        for row in rows:
-            product_id = _int(row.get("id"))
-            if product_id is None or row.get("idProdutoPai"):
-                continue  # R1: variações listadas com idProdutoPai pertencem ao pai
-            items.append(BlingListItem(product_id, _is_active(row)))
-        return BlingProductPage(tuple(items), len(rows) >= PAGE_SIZE)
 
     async def get_product(self, bling_id: int) -> BlingProduct:
         body = await self.client.request("GET", f"{PRODUCTS_PATH}/{bling_id}")

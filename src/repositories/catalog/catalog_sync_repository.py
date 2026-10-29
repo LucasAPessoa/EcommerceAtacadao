@@ -1,4 +1,4 @@
-"""Persistência da importação do catálogo do Bling (spec 006)."""
+"""Persistência da importação do catálogo do Bling (specs 006 e 008)."""
 
 from datetime import datetime
 from typing import Optional, Sequence
@@ -21,6 +21,7 @@ from src.models.enums import (
 )
 from src.models.integrations import BlingConnection
 from src.models.sales import Order, StockReservation
+from src.models.store import STORE_SETTINGS_ID, StoreSettings
 
 PAID_STATUSES = (
     OrderStatusEnum.PAID,
@@ -29,9 +30,6 @@ PAID_STATUSES = (
     OrderStatusEnum.DELIVERED,
 )
 RUN_RETENTION = 200
-# Marca em `products.inventory_raw` (campo não usado pela importação): ids Bling das variações
-# fora de venda só por preço do site <= 0, para liberar sem HTTP quando o admin corrigir.
-PRICE_BLOCKED_KEY = "price_blocked"
 _CHUNK = 1000
 
 
@@ -168,18 +166,61 @@ class CatalogSyncRepository:
 
     # ------------------------------------------------------------ produtos
 
-    async def product_states(self, bling_ids: Sequence[int]) -> dict[int, tuple[str | None, bool]]:
-        """bling_id -> (situação gravada, sem hash). Ausente = produto novo."""
-        states: dict[int, tuple[str | None, bool]] = {}
+    async def known_resolution(self, bling_ids: Sequence[int]) -> tuple[set[int], dict[int, int]]:
+        """Resolve ids de vínculos sem HTTP: (ids que já são produto pai/simples, variação -> pai).
+
+        Produto simples tem a variação "Padrão" com o mesmo id: conta como produto, não variação.
+        """
         if not bling_ids:
-            return states
-        query = select(Product.bling_id, Product.status, Product.bling_content_hash).where(
-            Product.bling_id.in_(list(bling_ids))
+            return set(), {}
+        ids = list(bling_ids)
+        products = {
+            bid
+            for bid in (
+                await self.session.execute(
+                    select(Product.bling_id).where(Product.bling_id.in_(ids))
+                )
+            )
+            .scalars()
+            .all()
+            if bid is not None
+        }
+        rows = (
+            await self.session.execute(
+                select(ProductVariant.bling_id, Product.bling_id)
+                .join(Product, Product.id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.bling_id.in_(ids),
+                    ProductVariant.bling_id != Product.bling_id,
+                )
+            )
+        ).all()
+        variants = {vid: pid for vid, pid in rows if vid is not None and pid is not None}
+        return products, variants
+
+    async def find_products_with_variants(self, bling_ids: Sequence[int]) -> dict[int, Product]:
+        """Produtos por bling_id com variações carregadas (para comparar vínculos sem HTTP)."""
+        found: dict[int, Product] = {}
+        ids = list(bling_ids)
+        for start in range(0, len(ids), _CHUNK):
+            query = (
+                select(Product)
+                .where(Product.bling_id.in_(ids[start : start + _CHUNK]))
+                .options(selectinload(Product.variants))
+                .execution_options(populate_existing=True)
+            )
+            for product in (await self.session.execute(query)).scalars().all():
+                assert product.bling_id is not None
+                found[product.bling_id] = product
+        return found
+
+    async def pricing_auto_confirm(self) -> bool:
+        """Confirmação automática de preços da loja (default ligada se a linha não existir)."""
+        query = select(StoreSettings.pricing_auto_confirm).where(
+            StoreSettings.id == STORE_SETTINGS_ID
         )
-        for bling_id, status, content_hash in (await self.session.execute(query)).all():
-            assert bling_id is not None
-            states[bling_id] = (status, content_hash is None)
-        return states
+        value = (await self.session.execute(query)).scalar_one_or_none()
+        return True if value is None else bool(value)
 
     async def find_product(self, bling_id: int) -> Optional[Product]:
         query = (
@@ -187,6 +228,7 @@ class CatalogSyncRepository:
             .where(Product.bling_id == bling_id)
             .options(
                 selectinload(Product.variants).selectinload(ProductVariant.images),
+                selectinload(Product.variants).selectinload(ProductVariant.pricing_tiers),
                 selectinload(Product.categories),
             )
             .execution_options(populate_existing=True)
@@ -202,22 +244,33 @@ class CatalogSyncRepository:
                 delete(ProductImage).where(ProductImage.variant_id.in_(list(variant_ids)))
             )
 
-    async def deactivate_missing(self, seen: Sequence[int]) -> int:
-        """Desativa produtos ativos com bling_id fora de `seen`; zera o hash p/ reativar depois."""
-        seen_set = set(seen)
+    async def unlist_missing(self, covered: Sequence[int]) -> int:
+        """Tira da loja os produtos sem vínculo (`covered` = pais/simples com vínculo).
+
+        Desativa (nunca apaga) e zera o hash para reimportar se o vínculo voltar; as tabelas de
+        preço das variações ficam intactas.
+        """
+        covered_set = set(covered)
         rows = (
             await self.session.execute(
                 select(Product.id, Product.bling_id).where(
-                    Product.bling_id.is_not(None), Product.is_active.is_(True)
+                    Product.bling_id.is_not(None),
+                    (Product.is_active.is_(True)) | (Product.store_listed.is_(True)),
                 )
             )
         ).all()
-        missing = [pid for pid, bid in rows if bid not in seen_set]
+        missing = [pid for pid, bid in rows if bid not in covered_set]
         for start in range(0, len(missing), _CHUNK):
             await self.session.execute(
                 update(Product)
                 .where(Product.id.in_(missing[start : start + _CHUNK]))
-                .values(is_active=False, bling_content_hash=None, updated_at=datetime.utcnow())
+                .values(
+                    is_active=False,
+                    store_listed=False,
+                    bling_store_link_id=None,
+                    bling_content_hash=None,
+                    updated_at=datetime.utcnow(),
+                )
             )
         return len(missing)
 
@@ -239,8 +292,13 @@ class CatalogSyncRepository:
         )
         return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
-    async def count_bling_products(self) -> int:
-        query = select(func.count()).select_from(Product).where(Product.bling_id.is_not(None))
+    async def count_listed_products(self) -> int:
+        """Produtos hoje vinculados à loja do site (base da cota de releitura)."""
+        query = (
+            select(func.count())
+            .select_from(Product)
+            .where(Product.bling_id.is_not(None), Product.store_listed.is_(True))
+        )
         return int((await self.session.execute(query)).scalar_one())
 
     async def count_active_bling_products(self) -> int:
@@ -263,34 +321,15 @@ class CatalogSyncRepository:
             .with_for_update()
         )
 
-    async def lock_price_blocked_variants(self) -> list[ProductVariant]:
-        """Variações inativas de produtos marcados `price_blocked` cujo preço do site passou a > 0.
-
-        Travadas em ordem de id (a do checkout); o produto vem carregado.
-        """
-        query = (
-            select(ProductVariant)
-            .join(Product, Product.id == ProductVariant.product_id)
-            .where(
-                Product.inventory_raw.has_key(PRICE_BLOCKED_KEY),
-                ProductVariant.is_active.is_(False),
-                ProductVariant.base_price > 0,
-                ProductVariant.deleted_at.is_(None),
-            )
-            .options(selectinload(ProductVariant.product))
-            .order_by(ProductVariant.id)
-            .with_for_update(of=ProductVariant)
-            .execution_options(populate_existing=True)
-        )
-        return list((await self.session.execute(query)).scalars().all())
-
     # ------------------------------------------------------------ estoque
 
     async def variant_bling_ids_after(self, after_bling_id: int, limit: int) -> list[int]:
-        """Próximos `bling_id` de variações ativas (sem travar), para pedir os saldos."""
+        """Próximos `bling_id` de variações ativas da loja (sem travar), para pedir os saldos."""
         query = (
             select(ProductVariant.bling_id)
+            .join(Product, Product.id == ProductVariant.product_id)
             .where(
+                Product.store_listed.is_(True),
                 ProductVariant.bling_id > after_bling_id,
                 ProductVariant.is_active.is_(True),
                 ProductVariant.deleted_at.is_(None),
