@@ -95,8 +95,10 @@ def _product(name: str, code: str) -> str:
     ), pid
 
 
-def _variant(pid: str, sku: str, price: str, *, active: bool = True, deleted: bool = False):
-    vid = str(uuid.uuid4())
+def _variant(
+    pid: str, sku: str, price: str, *, active: bool = True, deleted: bool = False, vid: str = ""
+):
+    vid = vid or str(uuid.uuid4())
     return (
         "INSERT INTO product_variants (id, product_id, bling_sku, variation_name, base_price, "
         "stock_quantity, is_active, deleted_at, created_at, updated_at) "
@@ -142,9 +144,9 @@ def test_backfill_assigns_tiers_to_variants_and_keeps_count(pg) -> None:
     # Variação mais barata inativa/deletada é ignorada quando há ativa.
     s, mixed = _product("Feijão", "FEI")
     sql.append(s)
-    s, _inactive = _variant(mixed, "FEI-I", "1.00", active=False)
+    s, _inactive = _variant(mixed, "FEI-I", "7.20", active=False)
     sql.append(s)
-    s, _deleted = _variant(mixed, "FEI-D", "2.00", deleted=True)
+    s, _deleted = _variant(mixed, "FEI-D", "7.50", deleted=True)
     sql.append(s)
     s, mixed_active = _variant(mixed, "FEI-A", "8.00")
     sql.append(s)
@@ -155,10 +157,19 @@ def test_backfill_assigns_tiers_to_variants_and_keeps_count(pg) -> None:
     s, only_inactive_v = _variant(only_inactive, "OLE-1", "6.00", active=False)
     sql.append(s)
     sql.append(_tier(only_inactive, 2, "5.00"))
+    # Empate de base_price entre ativas: vence o menor id (inserido por último de propósito).
+    s, tie = _product("Açúcar", "ACU")
+    sql.append(s)
+    low_id, high_id = "00000000-0000-0000-0000-000000000001", "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    s, _tie_high = _variant(tie, "ACU-H", "12.00", vid=high_id)
+    sql.append(s)
+    s, _ = _variant(tie, "ACU-L", "12.00", vid=low_id)
+    sql.append(s)
+    sql.append(_tier(tie, 3, "11.00"))
     _sql(name, "\n".join(sql))
 
     before = int(_sql(name, "SELECT count(*) FROM pricing_tiers"))
-    assert before == 6
+    assert before == 7
 
     upgraded = _alembic(url, "upgrade", "head")
     assert upgraded.returncode == 0, upgraded.stderr
@@ -176,6 +187,7 @@ def test_backfill_assigns_tiers_to_variants_and_keeps_count(pg) -> None:
     assert rows[f"{high}:5"] == high_cheap
     assert rows[f"{mixed}:4"] == mixed_active
     assert rows[f"{only_inactive}:2"] == only_inactive_v
+    assert rows[f"{tie}:3"] == low_id
 
     check = _alembic(url, "check")
     assert check.returncode == 0, check.stdout + check.stderr
