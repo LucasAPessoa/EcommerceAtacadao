@@ -26,6 +26,7 @@ A sincronização deixa de varrer o catálogo inteiro e passa a partir dos **ví
   - Vínculo no pai (formato `V`): as variações não têm vínculo próprio (`GET /produtos/lojas?idProduto=<variação>` vazio).
   - Vínculo numa variação: `produto.id` é o id da variação (`GET /produtos/{id}` traz `variacao.produtoPai.id`).
   - Produto simples: `produto.id` = id do produto; preço 0 quando o preço da loja não foi preenchido.
+- PUT/POST de `/produtos/lojas` exigem `codigo` não vazio e diferente de "0" (senão 400, código 121, "O campo idProdutoLoja é obrigatório."); o site usa o SKU da variação.
 - O detalhe do produto continua sendo a fonte de nome, descrição, imagens (S3, 7 dias), medidas, campos customizados e variações.
 
 ## Constitution Check
