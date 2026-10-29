@@ -35,6 +35,7 @@ Neste documento, "anúncio do site" = vínculo de um produto com a loja do site 
 - Q: Preço do anúncio mudou no Bling depois da importação? → A: O site acompanha: a sincronização atualiza a linha de 1 unidade. A edição no site também vai para o Bling, então os dois lados ficam iguais.
 - Q: Faixas por quantidade podem vir do Bling (lista de preços, campos customizados)? → A: Não. Ficam no site, uma tabela por variação.
 - Q: O que acontece com as faixas atuais? → A: São removidas (3 faixas do seed, ligadas ao produto).
+- Q: Editar nome e descrição pelo site e gravar no Bling (bidirecional)? → A: Não por enquanto (2026-10-29). Só o preço de 1 unidade é bidirecional; o resto se edita no Bling. A API permite (`PATCH /produtos/{id}`), mas o cadastro é compartilhado com os outros canais e com a NF-e.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -51,9 +52,9 @@ O admin, no cadastro do produto no Bling, vincula o produto (ou variações dele
 1. **Given** confirmação automática ligada, **When** um produto vinculado é importado, **Then** o produto aparece na loja e cada variação publicada tem a linha de 1 unidade igual ao preço do vínculo, sem outras faixas.
 2. **Given** confirmação automática desligada, **When** um produto vinculado é importado, **Then** o produto aparece no admin como "aguardando preços" e não aparece na loja.
 3. **Given** um produto do Bling sem vínculo com a loja do site, **When** a sincronização roda, **Then** ele não aparece no site.
-6. **Given** um produto com variações vinculado só no pai (R$ 100) e uma variação com vínculo próprio (R$ 200), **Then** a variação com vínculo próprio entra a R$ 200 e as demais a R$ 100.
 4. **Given** o vínculo removido no Bling ou o produto inativado, **When** a sincronização roda, **Then** o produto sai da loja; as faixas configuradas ficam guardadas e voltam se o vínculo for recriado.
 5. **Given** um produto vinculado só a outras lojas (Mercado Livre, Shopee), **Then** ele é ignorado.
+6. **Given** um produto com variações vinculado só no pai (R$ 100) e uma variação com vínculo próprio (R$ 200), **Then** a variação com vínculo próprio entra a R$ 200 e as demais a R$ 100.
 
 ---
 

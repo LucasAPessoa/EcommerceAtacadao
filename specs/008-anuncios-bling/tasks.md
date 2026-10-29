@@ -26,14 +26,14 @@
 
 ## Phase 1: Models e migração (PR 1)
 
-- [ ] T001 `src/models/catalog.py` e `src/models/store_settings.py` (ou equivalente): colunas de `products`, `product_variants`, `pricing_tiers` e `store_settings` do plan.md; enums `PriceSource` e `PricingStatus`; `ProductVariant.pricing_tiers` ordenado por `min_quantity`; índice parcial legado — atacadao-api
+- [ ] T001 `src/models/catalog.py`, `src/models/enums.py` e `src/models/store.py`: colunas de `products`, `product_variants`, `pricing_tiers` e `store_settings` do plan.md; enums `PriceSource` e `PricingStatus`; `ProductVariant.pricing_tiers` ordenado por `min_quantity`; índice parcial legado — atacadao-api
 - [ ] T002 Migração Alembic (down_revision = head de produção): `DELETE FROM pricing_tiers`, colunas novas, check `min_quantity >= 1`, unicidade por variação, índice parcial legado; downgrade documentado (sem restaurar dados) — atacadao-api
 - [ ] T003 Teste de integração da migração: tabela vazia após upgrade, unicidades, defaults (`pricing_status=PENDING`, `pricing_auto_confirm=true`), `alembic check` sem drift; ajustar testes/fixtures existentes que criem faixas — atacadao-api
 
 ## Phase 2: Configuração, cliente e sincronização (PR 2, brief A)
 
 - [ ] T004 [US1] `BLING_STORE_ID` em `src/core/client_config.py` e `.env.example`; sync e admin tratam a ausência — atacadao-api
-- [ ] T005 [US1] `src/integrations/bling/catalog.py`/`client.py`: `list_store_links_page`, `get_store_link`, `put_store_link`, `create_store_link` (retry só em PUT); normalização do vínculo — atacadao-api
+- [ ] T005 [US1] `src/integrations/bling/catalog.py`/`client.py`: `list_store_links_page`, `get_store_link`, `put_store_link`, `create_store_link` (retry só em PUT); normalização do vínculo; teste de que o `PUT` reenvia o corpo lido e só troca `preco` (FR-013) — atacadao-api
 - [ ] T006 [US1] `catalog_sync_service.py`: varredura de vínculos, resolução pai/variação, detalhe dos produtos vinculados, publicação por variação, preço efetivo com fallback, criação/atualização da linha 1 e `pricing_status` conforme `pricing_auto_confirm`, finalização só com varredura completa; remover descoberta pelo catálogo inteiro e a regra de preço só na criação — atacadao-api
 - [ ] T007 [P] [US1] Testes com Bling simulado: vínculo no pai, na variação (prevalece), simples com preço 0 (fallback + aviso), tudo 0 (pendência), vínculo removido (sai, tabela preservada), outra loja ignorada, auto-confirm on/off, mudança de preço no Bling atualiza só a linha 1 — atacadao-api
 
@@ -43,7 +43,7 @@
 - [ ] T009 [US3] Carrinho e checkout pela quantidade da variação; repositórios carregam `ProductVariant.pricing_tiers` (`cart_repository.py`, `order_repository.py`) — atacadao-api
 - [ ] T010 [P] [US3] Testes unitários: 10 sacas sem faixa, 10 pacotes com faixa, 5+5 sem faixa, linha 1 abaixo da faixa — atacadao-api
 - [ ] T011 [US2][US4] `StorePricingService.save_table` e `confirm`: validação, escrita no Bling antes de gravar (PUT do vínculo lido ou POST do vínculo da variação), transação, erros 422/409/502 — atacadao-api
-- [ ] T012 [P] [US2][US4] Testes de serviço com Bling simulado: confirmar sem mudança, faixas válidas/inválidas, mudança de linha 1 com vínculo próprio (PUT) e herdado (POST), falha do Bling não altera nada, sem escopo → 409 — atacadao-api
+- [ ] T012 [P] [US2][US4] Testes de serviço com Bling simulado: confirmar sem mudança, faixas válidas/inválidas, mudança de linha 1 com vínculo próprio (PUT) e herdado (POST), falha do Bling não altera nada, sem escopo → 409, nenhum campo além de `preco` muda no vínculo e o cadastro do produto nunca é escrito (FR-013) — atacadao-api
 
 ## Phase 4: Admin, catálogo e seed (PR 2, brief C)
 
