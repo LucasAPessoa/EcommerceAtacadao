@@ -66,6 +66,8 @@ A sincronização deixa de varrer o catálogo inteiro e passa a partir dos **ví
 4. **Publicação por variação**: ativa se o produto/variação está ativo no Bling e (vínculo próprio ou vínculo do pai). Preço efetivo: `preco` do vínculo da variação, senão do pai; se 0, preço geral do produto/variação (`price_source=GENERAL`, aviso); se tudo 0, fora da loja com pendência `PRICE_NOT_SET`.
 5. **Tabela**: se a linha de 1 unidade não existe → cria com o preço efetivo; `pricing_status = CONFIRMED` se `pricing_auto_confirm`, senão `PENDING`. Se existe e o preço efetivo mudou → atualiza linha 1 e `base_price` (FR-010); faixas intocadas.
 6. **Finalização**: só com varredura completa, produtos sem vínculo → `store_listed=false` (produto fora da loja); tabelas preservadas.
+8. **Quando o conteúdo é relido**: o vínculo (existência e preço) é lido em todo ciclo. Nome, descrição, imagens e situação do produto são relidos no ciclo completo (`CATALOG_SYNC_FULL_DETAIL_HOURS`, e em todo ciclo enquanto o catálogo vinculado cabe no orçamento), em produto desconhecido ou quando o vínculo/preço diverge do gravado. A releitura incremental por data de alteração saiu (o Bling ignora `dataAlteracaoInicial` em `/produtos`).
+9. **Vínculos vazios**: um `GET /produtos/lojas` que responde 200 sem vínculos é legítimo (o admin removeu todos) e tira os produtos da loja; erro de leitura deixa o ciclo parcial e não desativa nada.
 7. Remove o caminho antigo de varredura do catálogo inteiro (`list_products_page` para descoberta) e a regra FR-010 da spec 006 (preço só na criação).
 
 ## Preço e escrita no Bling (PR 2)
