@@ -22,6 +22,7 @@ def _variant(*, stock: int = 20, tiers=((1, "10.00"), (5, "8.50"), (10, "7.25"))
         id=product_id,
         name="Produto atacadista",
         is_active=True,
+        deleted_at=None,
         store_listed=True,
     )
     return SimpleNamespace(

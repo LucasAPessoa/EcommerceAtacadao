@@ -132,3 +132,30 @@ async def test_pricing_tiers_and_variants_by_variation(
     assert (await client.get(f"{VARIANTS}/{pending}")).status_code == 404
     detail = (await client.get(f"{VARIANTS}/{confirmed}")).json()["data"]
     assert detail["unit_price"] == "20.00" and len(detail["pricing_tiers"]) == 2
+
+
+async def test_inactive_product_is_not_published_nor_purchasable(
+    client: httpx.AsyncClient, user_token: str, admin_token: str, seed: Seeder
+) -> None:
+    """Legado desativado (produto inativo, store_listed=true, variação ativa) sai da loja."""
+    pid = await seed.product("legado", active=False, listed=True)
+    vid = seed.variant_ids[pid][0]
+    headers = auth_headers(user_token)
+
+    catalog = await _public_by_code(client, seed)
+    cart = await client.post(
+        f"{API_V1_PREFIX}/sales/cart/items",
+        json={"variant_id": str(vid), "quantity": 1},
+        headers=headers,
+    )
+    detail = await client.get(
+        f"{API_V1_PREFIX}/admin/products/{pid}", headers=auth_headers(admin_token)
+    )
+
+    assert "legado" not in catalog
+    assert (await client.get(f"{PRODUCTS}/{pid}")).status_code == 404
+    assert (await client.get(f"{VARIANTS}/{vid}")).status_code == 404
+    tiers = await client.get(TIERS + "/", params={"variant_id": str(vid)})
+    assert tiers.json()["data"] == []
+    assert cart.status_code == 400, cart.text
+    assert detail.json()["data"]["variants"][0]["published"] is False

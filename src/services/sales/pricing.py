@@ -34,10 +34,13 @@ def select_unit_price(
 
 
 def is_variant_published(variant: ProductVariant) -> bool:
-    """Regra única de "publicada" (spec 008): ativa, de produto listado, com linha de 1 unidade."""
+    """Regra única de "publicada" (spec 008): variação ativa e não excluída, de produto ativo,
+    não excluído e listado, com a linha de 1 unidade."""
     return bool(
         variant.is_active
         and variant.deleted_at is None
+        and variant.product.is_active
+        and variant.product.deleted_at is None
         and variant.product.store_listed
         and any(t.min_quantity == 1 for t in variant.pricing_tiers)
     )

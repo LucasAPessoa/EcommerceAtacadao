@@ -16,10 +16,12 @@ def has_unit_price_line(variant: Any = ProductVariant) -> ColumnElement[bool]:
 
 
 def published(variant: Any = ProductVariant, product: Any = Product) -> ColumnElement[bool]:
-    """Variação ativa, não excluída, de produto listado, com a linha de 1 unidade."""
+    """Variação ativa e não excluída, de produto ativo, não excluído e listado, com linha 1."""
     return and_(
         variant.is_active.is_(True),
         variant.deleted_at.is_(None),
+        product.is_active.is_(True),
+        product.deleted_at.is_(None),
         product.store_listed.is_(True),
         has_unit_price_line(variant),
     )

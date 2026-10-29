@@ -14,6 +14,8 @@ def _variant(product_id, sku: str, tiers=((1, "10.00"), (5, "8.50"), (10, "7.25"
     now = datetime.now(UTC).replace(tzinfo=None)
     product = SimpleNamespace(
         id=product_id,
+        is_active=True,
+        deleted_at=None,
         store_listed=True,
     )
     return SimpleNamespace(
