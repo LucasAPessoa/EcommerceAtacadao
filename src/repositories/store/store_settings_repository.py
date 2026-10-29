@@ -38,3 +38,21 @@ class StoreSettingsRepository:
         assert row is not None
         await self.session.refresh(row)
         return row
+
+    async def set_pricing_auto_confirm(self, auto_confirm: bool, default_theme: str) -> bool:
+        """Grava só `pricing_auto_confirm`; cria a linha singleton (tema padrão) se não existir."""
+        now = datetime.utcnow()
+        stmt = insert(StoreSettings).values(
+            id=STORE_SETTINGS_ID,
+            theme=default_theme,
+            pricing_auto_confirm=auto_confirm,
+            created_at=now,
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[StoreSettings.id],
+            set_={"pricing_auto_confirm": auto_confirm, "updated_at": now},
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        return auto_confirm
