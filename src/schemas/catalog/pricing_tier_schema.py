@@ -25,5 +25,6 @@ class PricingTierUpdateSchema(BaseModel):
 
 class PricingTierResponseSchema(PricingTierBaseSchema, TimestampMixinSchema):
     id: UUID
-    product_id: UUID
+    product_id: Optional[UUID] = None  # linhas por variação (spec 008) não têm produto
+    variant_id: Optional[UUID] = None
     model_config = ConfigDict(from_attributes=True)

@@ -122,6 +122,8 @@ class TestPricingTiers:
         tiers = await _list(client, "pricing-tiers")
         counts: Dict[str, int] = {}
         for t in tiers:
+            if t["product_id"] is None:  # linha de 1 unidade da variação (spec 008)
+                continue
             counts[t["product_id"]] = counts.get(t["product_id"], 0) + 1
         product_id = max(counts, key=lambda k: counts[k])
         got = await _list(client, "pricing-tiers", product_id=product_id)

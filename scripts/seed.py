@@ -471,7 +471,7 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
                     PricingTier,
                     variant_id=variant.id,
                     min_quantity=1,
-                    defaults=dict(unit_price=price, product_id=product.id),
+                    defaults=dict(unit_price=price),
                 )
 
                 # Não condicionar as imagens à criação da variação: uma
