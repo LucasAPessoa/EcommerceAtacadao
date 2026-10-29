@@ -1,4 +1,4 @@
-"""Migração b8d4f2a6c913 (faixas por variação) num Postgres descartável em Docker."""
+"""Migrações de faixas de preço por variação e do fechamento (Postgres descartável)."""
 
 import os
 import shutil
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_HEAD = "a7c3e91b4d20"
+CLOSE_HEAD = "b8d4f2a6c913"  # estado anterior ao fechamento (PR 2b)
 
 
 def _free_port() -> int:
@@ -124,7 +125,7 @@ async def test_migration_pricing_tiers(pg_url) -> None:
                 )
             )
 
-        _alembic(pg_url, "upgrade", "head")
+        _alembic(pg_url, "upgrade", CLOSE_HEAD)
 
         async with engine.begin() as conn:
             # Faixas existentes apagadas
@@ -176,9 +177,6 @@ async def test_migration_pricing_tiers(pg_url) -> None:
                     text(_tier_sql()), {"id": uuid.uuid4(), "p": product_id, "v": None, "q": 3}
                 )
 
-        # sem drift entre models e migrações
-        _alembic(pg_url, "check")
-
         # downgrade reverte o schema e o upgrade volta a passar sem drift
         _alembic(pg_url, "downgrade", PREVIOUS_HEAD)
         await engine.dispose()  # conexões do pool guardam os tipos de antes do downgrade
@@ -212,6 +210,62 @@ async def test_migration_pricing_tiers(pg_url) -> None:
                 async with engine.begin() as conn:
                     await conn.execute(text(legacy_sql), {"id": uuid.uuid4(), **params})
 
+        _alembic(pg_url, "upgrade", CLOSE_HEAD)
+    finally:
+        await engine.dispose()
+
+
+CLOSE_INSERT = (
+    "INSERT INTO pricing_tiers (id, variant_id, min_quantity, unit_price, created_at, "
+    "updated_at) VALUES (:id, :v, :q, 5, now(), now())"
+)
+
+
+async def test_migration_close_pricing_tiers(pg_url) -> None:
+    _alembic(pg_url, "upgrade", CLOSE_HEAD)
+    engine = create_async_engine(pg_url)
+    try:
+        async with engine.begin() as conn:
+            product_id, (v1, _) = await _seed_product(conn)
+            await conn.execute(
+                text(
+                    "INSERT INTO pricing_tiers (id, product_id, min_quantity, unit_price, "
+                    "created_at, updated_at) VALUES (:id, :p, 5, 5, now(), now())"
+                ),
+                {"id": uuid.uuid4(), "p": product_id},
+            )
+            await conn.execute(text(CLOSE_INSERT), {"id": uuid.uuid4(), "v": v1, "q": 2})
+
+        _alembic(pg_url, "upgrade", "head")
+
+        async with engine.begin() as conn:
+            rows = (await conn.execute(text("SELECT variant_id FROM pricing_tiers"))).all()
+            assert [r[0] for r in rows] == [v1]  # a faixa legada (sem variação) sumiu
+            cols = (
+                await conn.execute(
+                    text(
+                        "SELECT column_name, is_nullable FROM information_schema.columns "
+                        "WHERE table_name = 'pricing_tiers'"
+                    )
+                )
+            ).all()
+            by_name = dict(cols)
+            assert "product_id" not in by_name
+            assert by_name["variant_id"] == "NO"
+
+        with pytest.raises(IntegrityError):  # variant_id obrigatório
+            async with engine.begin() as conn:
+                await conn.execute(text(CLOSE_INSERT), {"id": uuid.uuid4(), "v": None, "q": 3})
+        with pytest.raises(IntegrityError):  # duplicada na variação
+            async with engine.begin() as conn:
+                await conn.execute(text(CLOSE_INSERT), {"id": uuid.uuid4(), "v": v1, "q": 2})
+        with pytest.raises(IntegrityError):  # min_quantity < 1
+            async with engine.begin() as conn:
+                await conn.execute(text(CLOSE_INSERT), {"id": uuid.uuid4(), "v": v1, "q": 0})
+
+        _alembic(pg_url, "check")
+
+        _alembic(pg_url, "downgrade", CLOSE_HEAD)
         _alembic(pg_url, "upgrade", "head")
         _alembic(pg_url, "check")
     finally:
