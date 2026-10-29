@@ -537,3 +537,31 @@ async def test_bling_validation_error_is_bad_gateway_with_field_message(
     with pytest.raises(StorePricingBlingError, match="idProdutoLoja é obrigatório"):
         await _save(factory, product_id, variant_id, "12.50")
     assert _table(await _variant(factory, variant_id)) == [(1, Decimal("10.00"))]
+
+
+async def test_stale_after_link_creation_keeps_new_link_id_only(
+    factory: Factory, fake: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _setup_bling(fake, [{**_bling_link(10.0), "produto": {"id": PRODUCT_BLING_ID}}])
+    product_id, variant_id = await _seed(factory, own_link=False)
+    original = BlingCatalogClient.create_store_link
+
+    async def create_then_edit(self: BlingCatalogClient, body: dict[str, Any]) -> int:
+        link_id = await original(self, body)
+        async with factory.begin() as other:
+            await other.execute(
+                text("UPDATE pricing_tiers SET unit_price = 11 WHERE variant_id = :v"),
+                {"v": variant_id},
+            )
+        return link_id
+
+    monkeypatch.setattr(BlingCatalogClient, "create_store_link", create_then_edit)
+    with pytest.raises(StorePricingConflictError) as error:
+        await _save(factory, product_id, variant_id, "12.50")
+
+    assert error.value.message == MSG_STALE
+    variant = await _variant(factory, variant_id)
+    assert variant.bling_store_link_id == LINK_ID + 1  # vínculo criado não fica órfão
+    assert _table(variant) == [(1, Decimal("11.00"))]
+    assert variant.price_source == PriceSource.PARENT_LINK
+    assert variant.pricing_status == PricingStatus.PENDING

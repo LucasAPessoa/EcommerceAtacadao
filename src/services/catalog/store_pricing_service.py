@@ -173,6 +173,10 @@ class StorePricingService:
             line_one = next((t for t in variant.pricing_tiers if t.min_quantity == 1), None)
             current_price = None if line_one is None else _money(line_one.unit_price)
             if current_price != read_price or variant.bling_store_link_id != read_link:
+                if new_link is not None and variant.bling_store_link_id is None:
+                    # o vínculo já existe no Bling: guarda só o id, para não ficar órfão
+                    variant.bling_store_link_id = new_link
+                    await self.session.commit()
                 raise StorePricingConflictError(MSG_STALE)
             if changed:
                 if new_link is not None:
