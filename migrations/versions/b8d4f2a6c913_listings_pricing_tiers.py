@@ -97,7 +97,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema (não restaura as faixas apagadas no upgrade)."""
     op.execute(
-        "DELETE FROM pricing_tiers WHERE variant_id IS NOT NULL OR product_id IS NULL OR min_quantity < 2"
+        "DELETE FROM pricing_tiers "
+        "WHERE variant_id IS NOT NULL OR product_id IS NULL OR min_quantity < 2"
     )
     op.drop_index("uq_pricing_tiers_product_min_legacy", table_name="pricing_tiers")
     op.drop_constraint("uq_pricing_tiers_variant_min", "pricing_tiers", type_="unique")
