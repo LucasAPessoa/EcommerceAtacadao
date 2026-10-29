@@ -32,7 +32,7 @@ from src.integrations.bling.client import BlingClient, RateLimiter
 from src.models.base import Base
 from src.models.catalog import Category, Product
 from src.models.catalog_presentation import ProductSitePresentation, product_site_categories
-from src.models.catalog_sync import CatalogSyncRun
+from src.models.catalog_sync import CatalogSyncRun, CatalogSyncState
 from src.models.enums import (
     BlingConnectionStatusEnum,
     CatalogSyncRunStatusEnum,
@@ -437,6 +437,14 @@ def _bling_product(name: str, category: int, changed: Optional[str] = None) -> d
 
 async def _set_bling(fake: httpx.AsyncClient, product: dict[str, Any]) -> None:
     config = {
+        "store_links": [
+            {
+                "id": 1_029_000_001,
+                "preco": 25.9,
+                "produto": {"id": product["id"]},
+                "loja": {"id": 206_347_377},
+            }
+        ],
         "products": [product],
         "categories": [{"id": 1, "descricao": "Mercearia"}, {"id": 2, "descricao": "Padaria"}],
         "balances": {str(1 + BIG): 5},
@@ -454,7 +462,9 @@ async def _import(factory: async_sessionmaker[AsyncSession]) -> None:
                 max_retries=0,
                 base_url=_env("BLING_API_BASE_URL"),
             )
-            service = CatalogSyncService(CatalogSyncRepository(session), BlingCatalogClient(client))
+            service = CatalogSyncService(
+                CatalogSyncRepository(session), BlingCatalogClient(client), store_id=206_347_377
+            )
             result = await service.run_slice(CatalogSyncTriggerEnum.MANUAL)
         if result.outcome == OUTCOME_FINISHED:
             async with factory() as session:
@@ -535,6 +545,10 @@ async def test_sync_preserves_the_presentation_overlay(
     await _set_bling(
         fake, _bling_product("Arroz Premium", category=2, changed=_sync_changed_stamp())
     )
+    async with factory.begin() as session:  # releitura completa: o vínculo não mudou
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(days=2)
     await _import(factory)
 
     async with factory() as session:
