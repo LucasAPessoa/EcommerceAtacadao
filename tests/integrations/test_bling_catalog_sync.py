@@ -673,12 +673,25 @@ async def test_all_zero_price_is_pending_and_outside_the_store(
     assert (await _products(factory))[1].is_active is True
 
 
-async def test_empty_scan_never_deactivates(factory: Factory, fake: httpx.AsyncClient) -> None:
+async def test_empty_scan_unlists_products_with_bling_id(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    """Um 200 sem vínculos é legítimo: o último vínculo removido tira o produto da loja."""
     await _imported(factory, fake, _product(1))
     await _bling(fake, [])
     run = await _cycle(factory)
-    assert run.status == CatalogSyncRunStatusEnum.PARTIAL
-    assert run.reason == "scan_vazio" and run.deactivated == 0
+    assert run.status == CatalogSyncRunStatusEnum.SUCCESS and run.deactivated == 1
+    product = (await _products(factory))[1]
+    assert product.is_active is False and product.store_listed is False
+
+
+async def test_scan_read_error_with_no_links_keeps_everything(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _imported(factory, fake, _product(1))
+    await _bling(fake, [], failures={"lojas:list:1": 503})
+    run = await _cycle(factory)
+    assert run.status == CatalogSyncRunStatusEnum.PARTIAL and run.deactivated == 0
     assert (await _products(factory))[1].is_active is True
 
 
@@ -1353,3 +1366,71 @@ async def test_slice_without_store_id_is_skipped(factory: Factory, fake: httpx.A
     assert result.outcome == OUTCOME_FINISHED
     assert result.run_status == CatalogSyncRunStatusEnum.SKIPPED
     assert await _products(factory) == {}
+
+
+async def test_variation_only_link_second_cycle_makes_no_detail_calls(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(
+        fake,
+        [_product(1, variations=TWO_VARIATIONS), _variation_detail(102, 1, price=95)],
+        {101: 5, 102: 5},
+        links=[_link(102, 200)],
+    )
+    await _cycle(factory)
+    run, details = await _calls_during(fake, factory)
+    assert details == set() and run.unchanged == 1
+
+
+async def test_orphan_variation_link_is_not_reread_every_cycle(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(
+        fake,
+        [_product(1, variations=TWO_VARIATIONS), _variation_detail(102, 1, price=95)],
+        {101: 5, 102: 5},
+        links=[_link(1, 100), _link(102, 200)],
+    )
+    await _cycle(factory)
+    # A variação 102 sai do cadastro do pai, mas o vínculo dela segue (e muda de preço).
+    await _bling(
+        fake,
+        [_product(1, variations=TWO_VARIATIONS[:1], changed=_now()), _variation_detail(102, 1)],
+        {101: 5},
+        links=[_link(1, 100), _link(102, 210)],
+    )
+    await _force_full(factory)
+    await _cycle(factory)
+    assert (await _variants(factory))[102].is_active is False
+    _, details = await _calls_during(fake, factory)
+    assert details == set()
+
+
+async def test_detail_failure_of_unresolved_link_deactivates_nothing(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _imported(factory, fake, _product(1))
+    await _bling(
+        fake,
+        [_product(1), _product(2, "Feijão")],
+        {1: 5, 2: 5},
+        failures={"produtos:detail:2": 503},
+    )
+    run = await _cycle(factory)
+    assert run.status == CatalogSyncRunStatusEnum.PARTIAL and run.deactivated == 0
+    assert (await _products(factory))[1].is_active is True
+
+
+async def test_variation_with_zero_price_link_uses_the_general_price(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _bling(
+        fake,
+        [_product(1, variations=TWO_VARIATIONS), _variation_detail(102, 1, price=95)],
+        {101: 5, 102: 5},
+        links=[_link(1, 100), _link(102, 0)],
+    )
+    await _cycle(factory)
+    variant = (await _variants(factory))[102]
+    assert variant.price_source == PriceSource.GENERAL and variant.store_price == Decimal("0.00")
+    assert variant.base_price == Decimal("95.00") and variant.is_active is True

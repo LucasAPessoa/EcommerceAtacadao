@@ -15,7 +15,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.client_config import get_client_config
-from src.integrations.bling.catalog import BlingCatalogClient, store_link_body_with_price
+from src.integrations.bling.catalog import (
+    BlingCatalogClient,
+    json_price,
+    store_link_body_with_price,
+)
 from src.integrations.bling.errors import (
     BlingError,
     BlingNotConnectedError,
@@ -192,7 +196,7 @@ class StorePricingService:
                     {
                         "produto": {"id": variant.bling_id},
                         "loja": {"id": store_id},
-                        "preco": float(unit_price),
+                        "preco": json_price(unit_price),
                         "codigo": "0",
                         "precoPromocional": 0,
                     }

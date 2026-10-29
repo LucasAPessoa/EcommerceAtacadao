@@ -10,7 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -314,9 +314,19 @@ def normalize_store_link(raw: dict[str, Any]) -> BlingStoreLink:
     )
 
 
+def json_price(price: Decimal) -> float:
+    """Preço do corpo JSON: quantizado em 2 casas; o `float` resultante tem representação mais
+    curta idêntica ao decimal (27.90 -> 27.9), então o número enviado é exato."""
+    quantized = Decimal(price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    value = float(quantized)
+    if Decimal(repr(value)) != quantized:
+        raise ValueError("preço fora da precisão suportada")
+    return value
+
+
 def store_link_body_with_price(link: BlingStoreLink, price: Decimal) -> dict[str, Any]:
     """Corpo do PUT: o vínculo lido, intacto, trocando só `preco` (FR-013)."""
-    return {**link.raw, "preco": float(price)}
+    return {**link.raw, "preco": json_price(price)}
 
 
 # Parâmetros de URL pré-assinada (S3 v2/v4) que mudam a cada leitura do Bling (R7).

@@ -212,7 +212,6 @@ async def list_products(
     request: Request,
     pagina: int = 1,
     limite: int = 100,
-    dataAlteracaoInicial: str | None = None,
     situacao: str | None = None,
 ):
     if failure := _catalog_guard(request, f"produtos:list:{pagina}"):
@@ -220,12 +219,6 @@ async def list_products(
     rows = []
     for product in _config["products"]:
         changed = product.get("dataAlteracao")
-        if (
-            dataAlteracaoInicial
-            and not _config.get("ignore_changed_filter")
-            and not (changed and changed >= dataAlteracaoInicial)
-        ):
-            continue
         if situacao and product.get("situacao", "A") != situacao:
             continue
         rows.append(

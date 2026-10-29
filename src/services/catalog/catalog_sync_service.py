@@ -789,6 +789,18 @@ class CatalogSyncService:
         before = _snapshot(product, synced)
         reasons: set[str] = set()
         listed = parent is not None
+        synced_ids = {v.bling_id for v, _ in synced}
+        for variant in product.variants:
+            if variant.bling_id in synced_ids or variant.bling_id == product.bling_id:
+                continue
+            # Vínculo órfão: a variação saiu do detalhe do Bling. Espelha o vínculo atual para
+            # não reler o produto a cada ciclo.
+            orphan = _link(links, variant.bling_id)
+            variant.is_active = False
+            if orphan is not None:
+                logger.info("catalog_sync_orphan_variant_link bling_id=%s", variant.bling_id)
+            variant.bling_store_link_id = orphan[0] if orphan else None
+            variant.store_price = orphan[1] if orphan else None
         for variant, item in synced:
             own = _link(links, variant.bling_id) if variant.bling_id != product.bling_id else None
             link = own or parent
@@ -870,16 +882,11 @@ class CatalogSyncService:
     async def _finalize(self) -> None:
         reason: Optional[str] = None
         scan_complete = self.state.scan_complete
-        if scan_complete and not self.state.seen_bling_ids:
-            # Varredura "completa" sem nenhum vínculo: suspeito (resposta vazia); não desativa.
-            if await self.repository.count_active_bling_products():
-                scan_complete = False
-                reason = "scan_vazio"
         if scan_complete:
             # Só com a varredura completa: o que ficou sem vínculo sai da loja (tabelas ficam).
             self.run.deactivated += await self.repository.unlist_missing(self.state.seen_bling_ids)
-            # Catálogo legado/seed (sem bling_id) sai de venda, mas só depois de o Bling listar
-            # algo (lista vazia nunca derruba o catálogo).
+            # Um 200 sem vínculos é legítimo: tira da loja os produtos com bling_id. O catálogo
+            # legado/seed (sem bling_id) só sai de venda depois de o Bling listar algo.
             if self.state.seen_bling_ids:
                 self.run.deactivated += await self.repository.deactivate_unlinked()
                 categories = await self.repository.deactivate_unlinked_categories()
