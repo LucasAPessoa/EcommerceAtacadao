@@ -9,13 +9,12 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from src.models.catalog import (
     Category,
-    PricingTier,
     Product,
     ProductImage,
     ProductVariant,
     product_category_table,
 )
-from src.models.catalog_presentation import ProductSitePresentation, product_site_categories
+from src.models.catalog_presentation import ProductSitePresentation
 from src.models.identity import User
 from src.repositories._like import escape_like
 from src.repositories.admin import _expressions as ex
@@ -32,7 +31,9 @@ class ProductListFilters:
     featured: Optional[bool] = None
     low_stock: Optional[bool] = None
     pending: Optional[bool] = None
-    customized: Optional[bool] = None
+    pricing_status: Optional[str] = None  # "pending" | "confirmed"
+    warning: Optional[str] = None  # "tier_not_below_unit" | "store_price_missing" | "price_not_set"
+    listed: Optional[bool] = None
     sort: str = "name"
     order: str = "asc"
 
@@ -41,11 +42,16 @@ class ProductListFilters:
 class ProductDetailData:
     product: Product
     variants: list[tuple[ProductVariant, Optional[str]]]
-    pricing_tiers: list[PricingTier]
     bling_categories: list[Category]
     presentation: Optional[ProductSitePresentation]
-    site_categories: list[Category]
     updated_by: Optional[User]
+
+
+_WARNING_COLUMNS = {
+    "tier_not_below_unit": "tier_warning",
+    "store_price_missing": "store_price_missing",
+    "price_not_set": "price_not_set",
+}
 
 
 def _flag(expr: ColumnElement[bool], wanted: bool) -> ColumnElement[bool]:
@@ -82,29 +88,19 @@ class AdminProductRepository:
         )
 
     @staticmethod
-    def _effective_category_exists(category_id: uuid.UUID) -> ColumnElement[bool]:
-        site = exists().where(
-            product_site_categories.c.product_id == Product.id,
-            product_site_categories.c.category_id == category_id,
-            Category.id == category_id,
-            Category.deleted_at.is_(None),
-            Category.is_active.is_(True),
-        )
-        bling = exists().where(
+    def _category_exists(category_id: uuid.UUID) -> ColumnElement[bool]:
+        return exists().where(
             product_category_table.c.product_id == Product.id,
             product_category_table.c.category_id == category_id,
             Category.id == category_id,
             Category.deleted_at.is_(None),
         )
-        locked = func.coalesce(ProductSitePresentation.categories_locked, false())
-        return or_(and_(locked, site), and_(~locked, bling))
 
     def _apply_filters(self, stmt: Select[Any], f: ProductListFilters, agg: Any) -> Select[Any]:
         if f.q:
             pattern = f"%{escape_like(f.q.strip())}%"
             stmt = stmt.where(
                 or_(
-                    ProductSitePresentation.name.ilike(pattern, escape="\\"),
                     Product.name.ilike(pattern, escape="\\"),
                     Product.code.ilike(pattern, escape="\\"),
                     exists().where(
@@ -118,7 +114,7 @@ class AdminProductRepository:
                 )
             )
         if f.category_id is not None:
-            stmt = stmt.where(self._effective_category_exists(f.category_id))
+            stmt = stmt.where(self._category_exists(f.category_id))
         if f.active is not None:
             stmt = stmt.where(Product.is_active.is_(f.active))
         if f.visible is not None:
@@ -130,13 +126,19 @@ class AdminProductRepository:
             stmt = stmt.where(_flag(low, f.low_stock))
         if f.pending is not None:
             stmt = stmt.where(_flag(ex.pending_count_of(agg) > 0, f.pending))
-        if f.customized is not None:
-            stmt = stmt.where(_flag(ex.customized(), f.customized))
+        if f.pricing_status is not None:
+            stmt = stmt.where(
+                _flag(ex.count_of(agg, "pricing_pending") > 0, f.pricing_status == "pending")
+            )
+        if f.warning is not None:
+            stmt = stmt.where(ex.count_of(agg, _WARNING_COLUMNS[f.warning]) > 0)
+        if f.listed is not None:
+            stmt = stmt.where(Product.store_listed.is_(f.listed))
         return stmt
 
     def _order_by(self, f: ProductListFilters, agg: Any) -> list[Any]:
         keys: dict[str, Any] = {
-            "name": func.lower(ex.effective_name()),
+            "name": func.lower(Product.name),
             "price": agg.c.min_price,
             "stock": ex.stock_of(agg),
             "updated_at": self._updated_at(),
@@ -158,12 +160,12 @@ class AdminProductRepository:
         stmt = (
             filtered.add_columns(
                 Product.code,
-                ex.effective_name().label("name"),
+                Product.name.label("name"),
                 Product.name.label("bling_name"),
+                Product.store_listed,
                 Product.is_active,
                 self._visible().label("visible"),
                 self._featured().label("featured"),
-                ex.customized().label("customized"),
                 agg.c.min_price,
                 agg.c.max_price,
                 ex.stock_of(agg).label("stock"),
@@ -171,6 +173,10 @@ class AdminProductRepository:
                     "low_stock"
                 ),
                 ex.pending_count_of(agg).label("pending_count"),
+                ex.count_of(agg, "pricing_pending").label("pricing_pending"),
+                ex.count_of(agg, "tier_warning").label("tier_warning"),
+                ex.count_of(agg, "store_price_missing").label("store_price_missing"),
+                ex.count_of(agg, "price_not_set").label("price_not_set"),
                 self._updated_at().label("updated_at"),
             )
             .order_by(*self._order_by(f, agg))
@@ -226,40 +232,15 @@ class AdminProductRepository:
                 select(ProductVariant, ex.variant_pending_reason())
                 .join(Product, Product.id == ProductVariant.product_id)
                 .where(ProductVariant.product_id == product_id, ProductVariant.deleted_at.is_(None))
-                .options(selectinload(ProductVariant.images))
+                .options(
+                    selectinload(ProductVariant.images),
+                    selectinload(ProductVariant.pricing_tiers),
+                    selectinload(ProductVariant.product),
+                )
                 .order_by(ProductVariant.created_at, ProductVariant.id)
             )
         ).all()
-        tiers = (
-            (
-                await self.session.execute(
-                    select(PricingTier)
-                    .where(PricingTier.product_id == product_id)
-                    .order_by(PricingTier.min_quantity)
-                )
-            )
-            .scalars()
-            .all()
-        )
         presentation = await self.session.get(ProductSitePresentation, product_id)
-        site_categories = (
-            (
-                await self.session.execute(
-                    select(Category)
-                    .join(
-                        product_site_categories,
-                        product_site_categories.c.category_id == Category.id,
-                    )
-                    .where(
-                        product_site_categories.c.product_id == product_id,
-                        Category.deleted_at.is_(None),
-                    )
-                    .order_by(Category.name)
-                )
-            )
-            .scalars()
-            .all()
-        )
         updated_by = None
         if presentation is not None and presentation.updated_by_user_id is not None:
             updated_by = await self.session.get(User, presentation.updated_by_user_id)
@@ -267,11 +248,9 @@ class AdminProductRepository:
         return ProductDetailData(
             product=product,
             variants=[(row[0], row[1]) for row in variant_rows],
-            pricing_tiers=list(tiers),
             bling_categories=sorted(
                 (c for c in product.categories if c.deleted_at is None), key=lambda c: c.name
             ),
             presentation=presentation,
-            site_categories=list(site_categories),
             updated_by=updated_by,
         )

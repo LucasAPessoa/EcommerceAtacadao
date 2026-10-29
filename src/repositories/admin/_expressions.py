@@ -1,12 +1,13 @@
 """Expressões SQL reutilizáveis do portal admin (007: data-model "Valores derivados").
 
-Tudo é derivado dos dados atuais, sem persistência: nome efetivo, estoque, faixa de preço,
-motivo de pendência (R5) e "personalizado".
+Tudo é derivado dos dados atuais, sem persistência: estoque, faixa de preço, motivo de
+pendência (R5), variação publicada e avisos de preço (spec 008).
 """
 
 from typing import Any
 
-from sqlalchemy import Select, and_, case, false, func, literal, or_, select
+from sqlalchemy import Select, and_, case, exists, func, literal, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from src.integrations.bling.catalog import (
@@ -14,13 +15,41 @@ from src.integrations.bling.catalog import (
     INCOMPLETE_PRICE,
     INCOMPLETE_WEIGHT,
 )
-from src.models.catalog import Product, ProductVariant
-from src.models.catalog_presentation import ProductSitePresentation
+from src.models.catalog import PricingTier, Product, ProductVariant
+from src.models.enums import PriceSource, PricingStatus
+from src.repositories.catalog._published import published
 
 
-def effective_name() -> ColumnElement[str]:
-    """``COALESCE(presentation.name, products.name)`` (exige o join com a apresentação)."""
-    return func.coalesce(ProductSitePresentation.name, Product.name)
+def tier_not_below_unit(variant: Any = ProductVariant) -> ColumnElement[bool]:
+    """Alguma faixa (a partir de 2) com preço >= ao da linha de 1 unidade."""
+    line_one = aliased(PricingTier)
+    tier = aliased(PricingTier)
+    return exists().where(
+        line_one.variant_id == variant.id,
+        line_one.min_quantity == 1,
+        tier.variant_id == variant.id,
+        tier.min_quantity > 1,
+        tier.unit_price >= line_one.unit_price,
+    )
+
+
+def store_price_missing(variant: Any = ProductVariant, product: Any = Product) -> Any:
+    """Variação publicada que usa o preço geral do Bling (vínculo sem preço)."""
+    return and_(published(variant, product), variant.price_source == PriceSource.GENERAL)
+
+
+def price_not_set(variant: Any = ProductVariant, product: Any = Product) -> Any:
+    """Variação de produto listado, preço geral e sem preço no Bling."""
+    return and_(
+        variant.deleted_at.is_(None),
+        product.store_listed.is_(True),
+        variant.price_source == PriceSource.GENERAL,
+        variant.base_price <= 0,
+    )
+
+
+def pricing_pending(variant: Any = ProductVariant, product: Any = Product) -> Any:
+    return and_(published(variant, product), variant.pricing_status == PricingStatus.PENDING)
 
 
 def variant_pending_reason(
@@ -57,19 +86,6 @@ def variant_pending_reason(
     )
 
 
-def customized() -> ColumnElement[bool]:
-    """Apresentação com algum texto não NULL ou categorias travadas (exige o join)."""
-    return func.coalesce(
-        or_(
-            ProductSitePresentation.name.is_not(None),
-            ProductSitePresentation.description.is_not(None),
-            ProductSitePresentation.complementary_description.is_not(None),
-            ProductSitePresentation.categories_locked.is_(True),
-        ),
-        false(),
-    )
-
-
 def variant_aggregates() -> Any:
     """Subconsulta por produto: estoque, menor/maior preço (variações ativas) e pendências.
 
@@ -87,6 +103,12 @@ def variant_aggregates() -> Any:
             func.min(case((selling, ProductVariant.base_price), else_=None)).label("min_price"),
             func.max(case((selling, ProductVariant.base_price), else_=None)).label("max_price"),
             func.count(case((reason.is_not(None), literal(1)), else_=None)).label("pending_count"),
+            func.count(case((pricing_pending(), literal(1)), else_=None)).label("pricing_pending"),
+            func.count(case((tier_not_below_unit(), literal(1)), else_=None)).label("tier_warning"),
+            func.count(case((store_price_missing(), literal(1)), else_=None)).label(
+                "store_price_missing"
+            ),
+            func.count(case((price_not_set(), literal(1)), else_=None)).label("price_not_set"),
         )
         .join(Product, Product.id == ProductVariant.product_id)
         .group_by(ProductVariant.product_id)
@@ -105,3 +127,8 @@ def stock_of(agg: Any) -> ColumnElement[int]:
 
 def pending_count_of(agg: Any) -> ColumnElement[int]:
     return func.coalesce(agg.c.pending_count, 0)
+
+
+def count_of(agg: Any, column: str) -> ColumnElement[int]:
+    """Contador por produto do agregado (``pricing_pending``, ``tier_warning``, ...)."""
+    return func.coalesce(agg.c[column], 0)

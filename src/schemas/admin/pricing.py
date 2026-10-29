@@ -7,7 +7,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.schemas.admin.products import AdminPricingTier, Money
+from src.schemas.admin.products import (
+    AdminPricingTier,
+    Money,
+    PriceSourceValue,
+    PricingStatusValue,
+    PricingWarning,
+)
 
 
 class PriceTierPayload(BaseModel):
@@ -31,11 +37,12 @@ class AdminVariantPricing(BaseModel):
     variation_name: str
     is_active: bool
     published: bool
-    price_source: Optional[str] = None
+    price_source: Optional[PriceSourceValue] = None
     store_price: Optional[Money] = None
-    pricing_status: str
+    pricing_status: PricingStatusValue
     pricing_confirmed_at: Optional[datetime] = None
     pricing_tiers: list[AdminPricingTier]
+    warnings: list[PricingWarning] = []
 
 
 class ConfirmPricingBatch(BaseModel):

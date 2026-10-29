@@ -71,6 +71,9 @@ class DashboardService:
             low_stock_products=await self.repository.low_stock_products(),
             low_stock_threshold=self.repository.low_stock_threshold,
             bling_pending_products=await self.repository.pending_products(),
+            pricing_pending_products=await self.repository.pricing_pending_products(),
+            tier_warning_products=await self.repository.tier_warning_products(),
+            store_price_missing_products=await self.repository.store_price_missing_products(),
         )
 
     async def list_pending(

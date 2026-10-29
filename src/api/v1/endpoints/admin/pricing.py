@@ -15,11 +15,12 @@ from src.schemas.admin.pricing import (
     ConfirmPricingResult,
     VariantPricingUpdate,
 )
-from src.schemas.admin.products import AdminPricingTier, AdminProductDetail
+from src.schemas.admin.products import AdminProductDetail
 from src.schemas.response_schema import BaseResponse
 from src.services.admin.product_admin_service import (
     AdminProductNotFoundError,
     ProductAdminService,
+    variant_pricing_fields,
 )
 from src.services.catalog.catalog_sync_service import build_catalog_client
 from src.services.catalog.store_pricing_service import (
@@ -57,20 +58,11 @@ def _raise(exc: StorePricingError) -> NoReturn:
 
 
 def _variant_response(variant: ProductVariant) -> AdminVariantPricing:
-    tiers = sorted(variant.pricing_tiers, key=lambda t: t.min_quantity)
     return AdminVariantPricing(
         id=variant.id,
         variation_name=variant.variation_name,
         is_active=variant.is_active,
-        published=any(t.min_quantity == 1 for t in tiers),
-        price_source=variant.price_source.value.lower() if variant.price_source else None,
-        store_price=variant.store_price,
-        pricing_status=variant.pricing_status.value.lower(),
-        pricing_confirmed_at=variant.pricing_confirmed_at,
-        pricing_tiers=[
-            AdminPricingTier(id=t.id, min_quantity=t.min_quantity, unit_price=t.unit_price)
-            for t in tiers
-        ],
+        **variant_pricing_fields(variant),
     )
 
 

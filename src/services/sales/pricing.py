@@ -33,10 +33,15 @@ def select_unit_price(
     return unit_price, None
 
 
-def is_variant_purchasable(variant: ProductVariant) -> bool:
-    """Variação publicada, com preço confirmado, de produto listado na loja."""
+def is_variant_published(variant: ProductVariant) -> bool:
+    """Regra única de "publicada" (spec 008): ativa, de produto listado, com linha de 1 unidade."""
     return bool(
         variant.is_active
-        and variant.pricing_status == PricingStatus.CONFIRMED
         and variant.product.store_listed
+        and any(t.min_quantity == 1 for t in variant.pricing_tiers)
     )
+
+
+def is_variant_purchasable(variant: ProductVariant) -> bool:
+    """Variação publicada com preço confirmado."""
+    return is_variant_published(variant) and variant.pricing_status == PricingStatus.CONFIRMED
