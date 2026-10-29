@@ -7,13 +7,14 @@ from sqlalchemy.orm import selectinload
 
 from src.models.catalog import Product, ProductVariant
 from src.repositories.base_repository import BaseRepository
-from src.schemas.catalog.product_variant_schema import ProductVariantResponseSchema
+from src.repositories.catalog._published import purchasable
+from src.schemas.catalog.product_variant_schema import ProductVariantPublicSchema
 
 
-class ProductVariantRepository(BaseRepository[ProductVariant, ProductVariantResponseSchema]):
+class ProductVariantRepository(BaseRepository[ProductVariant, ProductVariantPublicSchema]):
     def __init__(self, session: AsyncSession):
         super().__init__(
-            model=ProductVariant, response_schema=ProductVariantResponseSchema, session=session
+            model=ProductVariant, response_schema=ProductVariantPublicSchema, session=session
         )
 
     async def get_active_for_shipping(self, variant_id: UUID) -> Optional[ProductVariant]:
@@ -44,11 +45,34 @@ class ProductVariantRepository(BaseRepository[ProductVariant, ProductVariantResp
         )
         return result.scalar_one_or_none()
 
-    async def get_by_product(self, product_id: UUID) -> List[ProductVariantResponseSchema]:
-        query = select(ProductVariant).where(
-            ProductVariant.product_id == product_id, ProductVariant.deleted_at.is_(None)
+    @staticmethod
+    def _public_query():
+        """Variações que a loja pública mostra: publicadas e com preço confirmado."""
+        return (
+            select(ProductVariant)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .options(selectinload(ProductVariant.pricing_tiers))
+            .where(Product.deleted_at.is_(None), purchasable(ProductVariant, Product))
         )
+
+    async def get_by_id(self, id: UUID) -> Optional[ProductVariantPublicSchema]:
+        result = await self.session.execute(self._public_query().where(ProductVariant.id == id))
+        variant = result.scalar_one_or_none()
+        return self.response_schema.model_validate(variant) if variant else None
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> List[ProductVariantPublicSchema]:
         result = await self.session.execute(
-            query.order_by(ProductVariant.created_at, ProductVariant.id)
+            self._public_query()
+            .order_by(ProductVariant.created_at, ProductVariant.id)
+            .offset(skip)
+            .limit(limit)
         )
-        return [self.response_schema.model_validate(o) for o in result.scalars().all()]
+        return [self.response_schema.model_validate(v) for v in result.scalars().all()]
+
+    async def get_by_product(self, product_id: UUID) -> List[ProductVariantPublicSchema]:
+        result = await self.session.execute(
+            self._public_query()
+            .where(ProductVariant.product_id == product_id)
+            .order_by(ProductVariant.created_at, ProductVariant.id)
+        )
+        return [self.response_schema.model_validate(v) for v in result.scalars().all()]

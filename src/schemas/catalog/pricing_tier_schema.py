@@ -14,17 +14,8 @@ class PricingTierBaseSchema(BaseModel):
     unit_price: Decimal = Field(..., ge=0, description="Preço unitário, não pode ser negativo")
 
 
-class PricingTierCreateSchema(PricingTierBaseSchema):
-    product_id: UUID
-
-
-class PricingTierUpdateSchema(BaseModel):
-    min_quantity: Optional[int] = Field(None, gt=0)
-    unit_price: Optional[Decimal] = Field(None, ge=0)
-
-
 class PricingTierResponseSchema(PricingTierBaseSchema, TimestampMixinSchema):
     id: UUID
-    product_id: Optional[UUID] = None  # linhas por variação (spec 008) não têm produto
+    product_id: Optional[UUID] = None  # legado: as linhas por variação não têm produto
     variant_id: Optional[UUID] = None
     model_config = ConfigDict(from_attributes=True)

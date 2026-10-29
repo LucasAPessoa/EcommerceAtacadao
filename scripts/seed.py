@@ -532,31 +532,29 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             ),
         )
 
-        # --- Faixas de preço (compra em quantidade) ---
+        # --- Faixas de preço por variação (a linha de 1 unidade já foi criada acima) ---
         arroz_5kg = variants_by_code["ARZ-T1-5KG"].id
-        arroz_product = variants_by_code["ARZ-T1-5KG"].product_id
-        cafe_product = variants_by_code["CAFE-500-UN"].product_id
         cafe = variants_by_code["CAFE-500-UN"].id
         await get_or_create(
             session,
             PricingTier,
             variant_id=arroz_5kg,
             min_quantity=10,
-            defaults=dict(unit_price=Decimal("25.90"), product_id=arroz_product),
+            defaults=dict(unit_price=Decimal("25.90")),
         )
         await get_or_create(
             session,
             PricingTier,
             variant_id=arroz_5kg,
             min_quantity=30,
-            defaults=dict(unit_price=Decimal("23.90"), product_id=arroz_product),
+            defaults=dict(unit_price=Decimal("23.90")),
         )
         await get_or_create(
             session,
             PricingTier,
             variant_id=cafe,
             min_quantity=20,
-            defaults=dict(unit_price=Decimal("14.90"), product_id=cafe_product),
+            defaults=dict(unit_price=Decimal("14.90")),
         )
 
         # --- Avaliações e perguntas ---
