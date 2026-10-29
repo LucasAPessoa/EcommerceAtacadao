@@ -31,7 +31,7 @@ A faixa de preço passa a pertencer à variação (`pricing_tiers.variant_id`). 
 
 | Coluna | Antes | Depois |
 |---|---|---|
-| `variant_id` | — | UUID, FK `product_variants.id`, NOT NULL depois do backfill, índice |
+| `variant_id` | — | UUID, FK `product_variants.id`, índice; nullable no PR1, NOT NULL no PR3 |
 | `product_id` | FK produto | mantido; deve ser o produto da variação (preenchido pelo serviço) |
 | unicidade | `uq_pricing_tiers_product_min (product_id, min_quantity)` | `uq_pricing_tiers_variant_min (variant_id, min_quantity)` |
 | checks | `min_quantity > 1`, `unit_price >= 0` | iguais |
@@ -45,9 +45,10 @@ Relações: `ProductVariant.pricing_tiers` (ordenado por `min_quantity`); `Prici
    - se não houver, a variação ativa de menor `base_price`;
    - se não houver ativa, a de menor `base_price` entre todas.
    - Empate: menor `id` (determinístico).
-3. Faixa de produto sem nenhuma variação: não há como satisfazer NOT NULL. Na demo não existe; a migração falha com mensagem explícita (não apaga dados).
-4. `variant_id` NOT NULL, criar a FK e a nova unicidade, remover a antiga.
+3. Faixa de produto sem nenhuma variação fica com `variant_id` NULL e não se aplica (não apaga dados).
+4. Criar a FK e a nova unicidade, remover a antiga. A coluna fica nullable: o seed (`scripts/`) e o código antigo ainda criam faixas sem variação, e o migration gate não deixa `scripts/` no PR de migração.
 5. `downgrade`: recria a unicidade por produto; falha se houver duas faixas do mesmo produto com a mesma `min_quantity` (aceitável, documentado).
+6. PR3: migração que torna `variant_id` NOT NULL, depois do PR2 em produção (repete o backfill para faixas criadas na janela).
 
 Seed: `scripts/seed.py` passa a criar as faixas do arroz e do café pela variação (`ARZ-T1-5KG`, `CAFE-500-UN`) — vai no PR de código.
 
@@ -67,8 +68,9 @@ Seed: `scripts/seed.py` passa a criar as faixas do arroz e do café pela variaç
 | PR0 docs | esta pasta `specs/005-faixas-por-variacao/` | — |
 | PR1 migração | `src/models/catalog.py`, migração com backfill, teste da migração | merge → `Migrate production` (usuário aprova) |
 | PR2 código | serviços, repositórios, schemas, rotas, seed, testes | `alembic heads` = produção; merge depois da back #119 (ambos tocam `cart_service.py`) |
+| PR3 migração | `variant_id` NOT NULL | depois do PR2 em produção → `Migrate production` |
 | front #73 | loja e admin por variação | depois do PR2 |
 
 ## Riscos
-- Durante PR1→PR2, o código antigo ainda soma por produto e cria faixas sem `variant_id`: o POST de faixa falharia (NOT NULL). Aceitável (demo, sem clientes reais); evitar criar faixas pelo admin nessa janela.
+- Durante PR1→PR2, o código antigo ainda soma por produto e cria faixas sem `variant_id` (aceitas, por ser nullable). O PR3 repete o backfill antes do NOT NULL.
 - Front antigo continua lendo `/catalog/pricing-tiers/?product_id=` e mostra as faixas de todas as variações até a front #73.

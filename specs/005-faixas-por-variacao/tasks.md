@@ -15,12 +15,13 @@
 | PR0 (docs) | back | — | Esta pasta |
 | PR1 (migração) | back | T001–T003 | Só models, migração e teste → merge → `Migrate production` (usuário aprova) |
 | PR2 (código) | back | T004–T012 | Depois do PR1 em produção e do merge da back #119 |
+| PR3 (migração) | back | T017 | Depois do PR2 em produção |
 | front #73 | front | T013–T016 | Depois do PR2 |
 
 ## Phase 1: Migração (PR1)
 
-- [ ] T001 [US3] `src/models/catalog.py`: `PricingTier.variant_id` (FK `product_variants.id`, NOT NULL, índice), relação `variant`, `ProductVariant.pricing_tiers` ordenado por `min_quantity`; trocar `uq_pricing_tiers_product_min` por `uq_pricing_tiers_variant_min (variant_id, min_quantity)` — atacadao-api
-- [ ] T002 [US3] Migração Alembic com backfill conforme plan.md (nullable → backfill → NOT NULL/FK/unicidade; downgrade documentado; erro explícito para faixa de produto sem variação) — atacadao-api
+- [ ] T001 [US3] `src/models/catalog.py`: `PricingTier.variant_id` (FK `product_variants.id`, nullable, índice), relação `variant`, `ProductVariant.pricing_tiers` ordenado por `min_quantity`; trocar `uq_pricing_tiers_product_min` por `uq_pricing_tiers_variant_min (variant_id, min_quantity)` — atacadao-api
+- [ ] T002 [US3] Migração Alembic com backfill conforme plan.md (nullable → backfill → FK/unicidade; downgrade documentado; faixa de produto sem variação fica NULL) — atacadao-api
 - [ ] T003 [US3] Teste de integração da migração: produto com 1 variação, produto com 2 variações (caso do arroz: faixas de 25,90 e 23,90 vão para a de 27,90), faixa acima de todas as variações (vai para a mais barata), contagem de faixas igual antes e depois; `alembic check` sem drift — atacadao-api
 
 ## Phase 2: Preço por variação (PR2, US1)
@@ -47,3 +48,7 @@
 - [ ] T014 Loja: `ProductPage.tsx:248` e `lib/product.ts:29` (`tierRows`) mostram só as faixas da embalagem selecionada; carrinho mostra a faixa aplicada — atacadao-front
 - [ ] T015 Admin: `PricingTiersEditor.tsx` por embalagem, com preço-base ao lado e validação de faixa abaixo da base — atacadao-front
 - [ ] T016 [P] Testes de produto, carrinho e editor — atacadao-front
+
+## Phase 6: Fechamento (PR3)
+
+- [ ] T017 Migração: repetir o backfill das faixas com `variant_id` NULL e tornar a coluna NOT NULL; model sem `Optional` — atacadao-api
