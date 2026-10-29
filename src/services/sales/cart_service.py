@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Optional
 from uuid import UUID
 
@@ -11,7 +10,7 @@ from src.schemas.sales.cart_schema import (
     CartItemUpdateSchema,
     CartResponseSchema,
 )
-from src.services.sales.pricing import select_unit_price
+from src.services.sales.pricing import is_variant_purchasable, select_unit_price
 from src.services.sales.stock import InsufficientStockError, ensure_stock, get_available_stock
 
 
@@ -29,15 +28,9 @@ class CartService:
     @staticmethod
     def _response(cart) -> CartResponseSchema:
         """Monta totais informativos com a mesma faixa atacadista usada no checkout."""
-        quantities_by_product: defaultdict[UUID, int] = defaultdict(int)
-        for item in cart.items:
-            quantities_by_product[item.variant.product_id] += item.quantity
-
         items = []
         for item in cart.items:
-            unit_price, _ = select_unit_price(
-                item.variant, quantities_by_product[item.variant.product_id]
-            )
+            unit_price, _ = select_unit_price(item.variant, item.quantity)
             items.append(
                 CartItemResponseSchema(
                     id=item.id,
@@ -75,10 +68,10 @@ class CartService:
         Adiciona um item ao carrinho. Se a variação já estiver no carrinho,
         soma a quantidade em vez de criar uma linha duplicada.
         """
-        variant = await self.variant_repository.get_by_id(item_in.variant_id)
+        variant = await self.variant_repository.get_for_sale(item_in.variant_id)
         if not variant:
             raise ValueError("Variação de produto não encontrada.")
-        if not variant.is_active:
+        if not is_variant_purchasable(variant):
             raise ValueError("Esta variação de produto não está disponível no momento.")
 
         cart = await self._get_or_create_cart(user_id)

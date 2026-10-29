@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.models.catalog import Product, ProductVariant
 from src.repositories.base_repository import BaseRepository
@@ -29,6 +30,18 @@ class ProductVariantRepository(BaseRepository[ProductVariant, ProductVariantResp
             )
         )
         result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_for_sale(self, variant_id: UUID) -> Optional[ProductVariant]:
+        """Modelo da variação (não apagada) com produto e tabela, para validar a compra."""
+        result = await self.session.execute(
+            select(ProductVariant)
+            .options(
+                selectinload(ProductVariant.product),
+                selectinload(ProductVariant.pricing_tiers),
+            )
+            .where(ProductVariant.id == variant_id, ProductVariant.deleted_at.is_(None))
+        )
         return result.scalar_one_or_none()
 
     async def get_by_product(self, product_id: UUID) -> List[ProductVariantResponseSchema]:
