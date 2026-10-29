@@ -3,7 +3,7 @@
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +13,31 @@ from src.models.catalog import Product, ProductVariant
 class StorePricingRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def lock_variant_edits(self, variant_id: UUID) -> None:
+        """Serializa edições da mesma variação até o fim da transação (advisory lock).
+
+        Não bloqueia checkout nem pagamento, que travam a linha com FOR UPDATE: só quem edita
+        a tabela de preços da mesma variação espera aqui."""
+        key = int.from_bytes(variant_id.bytes[:8], "big", signed=True)
+        await self.session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+    async def get_variant(self, product_id: UUID, variant_id: UUID) -> ProductVariant | None:
+        """Variação do produto lida sem lock de linha."""
+        result = await self.session.execute(
+            select(ProductVariant)
+            .options(
+                selectinload(ProductVariant.product),
+                selectinload(ProductVariant.pricing_tiers),
+            )
+            .where(
+                ProductVariant.id == variant_id,
+                ProductVariant.product_id == product_id,
+                ProductVariant.deleted_at.is_(None),
+            )
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
 
     async def get_variant_locked(self, product_id: UUID, variant_id: UUID) -> ProductVariant | None:
         """Variação do produto, travada e relida (valida estado só depois do lock)."""

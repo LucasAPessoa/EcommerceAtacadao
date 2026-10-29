@@ -42,6 +42,9 @@ MSG_STORE_NOT_CONFIGURED = (
 )
 
 
+MSG_STALE = "O preço foi alterado por outra operação; recarregue."
+
+
 class StorePricingError(Exception):
     """Base dos erros de negócio; `message` é exibível ao admin."""
 
@@ -150,13 +153,30 @@ class StorePricingService:
         ordered = self.validate_tiers(unit_price, tiers)
         unit_price = _money(unit_price)
         try:
+            # Edições da mesma variação se serializam por advisory lock; nenhum lock de linha
+            # fica aberto durante a chamada ao Bling (o checkout trava a mesma linha).
+            await self.repository.lock_variant_edits(variant_id)
+            variant = await self.repository.get_variant(product_id, variant_id)
+            if variant is None:
+                raise StorePricingNotFoundError("Variação não encontrada.")
+            read_line = next((t for t in variant.pricing_tiers if t.min_quantity == 1), None)
+            read_price = None if read_line is None else _money(read_line.unit_price)
+            read_link = variant.bling_store_link_id
+            changed = read_price != unit_price
+            new_link: Optional[int] = None
+            if changed:
+                new_link = await self._write_bling(variant, unit_price)
+            # Transação curta: trava a linha, relê e revalida antes de gravar.
             variant = await self.repository.get_variant_locked(product_id, variant_id)
             if variant is None:
                 raise StorePricingNotFoundError("Variação não encontrada.")
             line_one = next((t for t in variant.pricing_tiers if t.min_quantity == 1), None)
-            changed = line_one is None or _money(line_one.unit_price) != unit_price
+            current_price = None if line_one is None else _money(line_one.unit_price)
+            if current_price != read_price or variant.bling_store_link_id != read_link:
+                raise StorePricingConflictError(MSG_STALE)
             if changed:
-                await self._write_bling(variant, unit_price)
+                if new_link is not None:
+                    variant.bling_store_link_id = new_link
                 variant.price_source = PriceSource.VARIANT_LINK
                 variant.store_price = unit_price
             if line_one is None:
@@ -181,7 +201,8 @@ class StorePricingService:
             raise
         return variant
 
-    async def _write_bling(self, variant: ProductVariant, unit_price: Decimal) -> None:
+    async def _write_bling(self, variant: ProductVariant, unit_price: Decimal) -> Optional[int]:
+        """Escreve o preço no vínculo; devolve o id do vínculo criado (ou None se já existia)."""
         store_id = self.store_id
         if store_id is None:
             raise StorePricingConflictError(MSG_STORE_NOT_CONFIGURED)
@@ -191,8 +212,9 @@ class StorePricingService:
                 await self.client.put_store_link(
                     link.id, store_link_body_with_price(link, unit_price)
                 )
+                return None
             else:
-                variant.bling_store_link_id = await self.client.create_store_link(
+                return await self.client.create_store_link(
                     {
                         "produto": {"id": variant.bling_id},
                         "loja": {"id": store_id},

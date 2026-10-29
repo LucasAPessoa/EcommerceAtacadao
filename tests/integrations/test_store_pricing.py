@@ -6,6 +6,7 @@ Banco descartável no mesmo servidor do ``DATABASE_URL``; exige as variáveis do
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import uuid
@@ -39,6 +40,7 @@ from src.models.integrations import BlingConnection
 from src.repositories.catalog.store_pricing_repository import StorePricingRepository
 from src.services.catalog.store_pricing_service import (
     MSG_SCOPE,
+    MSG_STALE,
     PriceTierInput,
     StorePricingBlingError,
     StorePricingConflictError,
@@ -409,3 +411,91 @@ async def test_variant_of_other_product_is_not_found(
     _, variant_id = await _seed(factory)
     with pytest.raises(StorePricingNotFoundError):
         await _save(factory, uuid.uuid4(), variant_id, "10.00")
+
+
+# -------------------------------------------- locks: o Bling nunca roda com a linha travada
+
+
+def _slow_put(monkeypatch: pytest.MonkeyPatch, hook: Any) -> list[str]:
+    """Troca o PUT do Bling por `hook()` (async), registrando entrada e saída."""
+    events: list[str] = []
+    original = BlingCatalogClient.put_store_link
+
+    async def slow(self: BlingCatalogClient, link_id: int, body: dict[str, Any]) -> Any:
+        events.append("enter")
+        await hook()
+        result = await original(self, link_id, body)
+        events.append("exit")
+        return result
+
+    monkeypatch.setattr(BlingCatalogClient, "put_store_link", slow)
+    return events
+
+
+async def test_checkout_lock_is_not_blocked_while_bling_is_called(
+    factory: Factory, fake: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _setup_bling(fake, [_bling_link(10.0)])
+    product_id, variant_id = await _seed(factory)
+    locked_during_bling: list[bool] = []
+
+    async def hook() -> None:
+        # o que o checkout faz: FOR UPDATE da variação; falha rápido se a linha estiver travada
+        async with factory.begin() as other:
+            await other.execute(text("SET LOCAL lock_timeout = '500ms'"))
+            row = (
+                await other.execute(
+                    select(ProductVariant.id)
+                    .where(ProductVariant.id == variant_id)
+                    .with_for_update()
+                )
+            ).scalar_one()
+            locked_during_bling.append(row == variant_id)
+
+    events = _slow_put(monkeypatch, hook)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    assert locked_during_bling == [True]
+    assert events == ["enter", "exit"]
+    assert _table(await _variant(factory, variant_id)) == [(1, Decimal("12.50"))]
+
+
+async def test_concurrent_edits_of_same_variant_are_serialized(
+    factory: Factory, fake: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _setup_bling(fake, [_bling_link(10.0)])
+    product_id, variant_id = await _seed(factory)
+
+    async def hook() -> None:
+        await asyncio.sleep(0.3)
+
+    events = _slow_put(monkeypatch, hook)
+    await asyncio.gather(
+        _save(factory, product_id, variant_id, "12.50"),
+        _save(factory, product_id, variant_id, "13.50"),
+    )
+
+    # sem sobreposição: a segunda edição só chama o Bling depois da primeira terminar
+    assert events == ["enter", "exit", "enter", "exit"]
+    assert _table(await _variant(factory, variant_id))[0][0] == 1
+
+
+async def test_changed_line_one_during_bling_call_is_conflict(
+    factory: Factory, fake: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _setup_bling(fake, [_bling_link(10.0)])
+    product_id, variant_id = await _seed(factory)
+
+    async def hook() -> None:
+        async with factory.begin() as other:
+            await other.execute(
+                text("UPDATE pricing_tiers SET unit_price = 11 WHERE variant_id = :v"),
+                {"v": variant_id},
+            )
+
+    _slow_put(monkeypatch, hook)
+    with pytest.raises(StorePricingConflictError) as error:
+        await _save(factory, product_id, variant_id, "12.50")
+
+    assert error.value.message == MSG_STALE
+    assert _table(await _variant(factory, variant_id)) == [(1, Decimal("11.00"))]
