@@ -33,6 +33,7 @@ def _variant(*, stock: int = 20, tiers=((1, "10.00"), (5, "8.50"), (10, "7.25"))
         base_price=Decimal("10.00"),
         stock_quantity=stock,
         is_active=True,
+        deleted_at=None,
         variation_name="Caixa",
         bling_sku="SKU-CAIXA",
         weight_kg=1.0,

@@ -37,6 +37,7 @@ def is_variant_published(variant: ProductVariant) -> bool:
     """Regra única de "publicada" (spec 008): ativa, de produto listado, com linha de 1 unidade."""
     return bool(
         variant.is_active
+        and variant.deleted_at is None
         and variant.product.store_listed
         and any(t.min_quantity == 1 for t in variant.pricing_tiers)
     )
