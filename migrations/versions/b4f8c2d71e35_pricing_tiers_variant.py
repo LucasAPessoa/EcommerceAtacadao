@@ -60,6 +60,14 @@ def upgrade() -> None:
         "uq_pricing_tiers_variant_min", "pricing_tiers", ["variant_id", "min_quantity"]
     )
     op.drop_constraint("uq_pricing_tiers_product_min", "pricing_tiers", type_="unique")
+    # Faixas legadas sem variação seguem únicas por produto (removido junto com o NOT NULL).
+    op.create_index(
+        "uq_pricing_tiers_product_min_legacy",
+        "pricing_tiers",
+        ["product_id", "min_quantity"],
+        unique=True,
+        postgresql_where=sa.text("variant_id IS NULL"),
+    )
 
 
 def downgrade() -> None:
@@ -67,6 +75,11 @@ def downgrade() -> None:
 
     Falha se duas faixas do mesmo produto tiverem a mesma min_quantity (variações distintas).
     """
+    op.drop_index(
+        "uq_pricing_tiers_product_min_legacy",
+        table_name="pricing_tiers",
+        postgresql_where=sa.text("variant_id IS NULL"),
+    )
     op.create_unique_constraint(
         "uq_pricing_tiers_product_min", "pricing_tiers", ["product_id", "min_quantity"]
     )

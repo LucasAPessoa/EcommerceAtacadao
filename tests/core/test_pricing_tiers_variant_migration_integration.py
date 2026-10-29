@@ -204,3 +204,42 @@ def test_orphan_tier_keeps_null_variant_without_deleting(pg) -> None:
     assert result.returncode == 0, result.stderr
     assert _sql(name, "SELECT count(*) FROM pricing_tiers WHERE variant_id IS NULL") == "1"
     assert _alembic(url, "check").returncode == 0
+
+
+def test_legacy_partial_unique_and_per_variant_unique(pg) -> None:
+    name, url = pg
+    assert _alembic(url, "upgrade", "head").returncode == 0
+
+    def run(stmt: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["docker", "exec", name, "psql", "-U", "t", "-d", "t", "-v", "ON_ERROR_STOP=1"]
+            + ["-c", stmt],
+            capture_output=True,
+            text=True,
+        )
+
+    s, pid = _product("Arroz", "ARZ")
+    s2, v1 = _variant(pid, "ARZ-1", "27.90")
+    s3, v2 = _variant(pid, "ARZ-2", "119.90")
+    _sql(name, s + s2 + s3)
+
+    def tier(variant: str | None, qty: int) -> str:
+        vid = f"'{variant}'" if variant else "NULL"
+        return (
+            "INSERT INTO pricing_tiers (id, product_id, variant_id, min_quantity, unit_price, "
+            f"created_at, updated_at) VALUES ('{uuid.uuid4()}', '{pid}', {vid}, {qty}, 1, "
+            "now(), now())"
+        )
+
+    # Sem variação: a primeira passa, a duplicata é recusada pelo índice legado.
+    assert run(tier(None, 5)).returncode == 0
+    dup = run(tier(None, 5))
+    assert dup.returncode != 0
+    assert "uq_pricing_tiers_product_min_legacy" in dup.stderr
+    # Mesma min_quantity em variações diferentes do mesmo produto é aceita.
+    assert run(tier(v1, 5)).returncode == 0
+    assert run(tier(v2, 5)).returncode == 0
+    # Duplicata na mesma variação é recusada.
+    same = run(tier(v1, 5))
+    assert same.returncode != 0
+    assert "uq_pricing_tiers_variant_min" in same.stderr

@@ -10,12 +10,14 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Table,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -223,6 +225,14 @@ class PricingTier(Base, TimestampMixin):
     __tablename__ = "pricing_tiers"
     __table_args__ = (
         UniqueConstraint("variant_id", "min_quantity", name="uq_pricing_tiers_variant_min"),
+        # Legado: faixas sem variação continuam únicas por produto. Sai com o NOT NULL.
+        Index(
+            "uq_pricing_tiers_product_min_legacy",
+            "product_id",
+            "min_quantity",
+            unique=True,
+            postgresql_where=text("variant_id IS NULL"),
+        ),
         CheckConstraint("min_quantity > 1", name="ck_pricing_tiers_min_quantity"),
         CheckConstraint("unit_price >= 0", name="ck_pricing_tiers_price_non_negative"),
     )
