@@ -292,7 +292,12 @@ async def test_price_only_on_creation_and_tiers_untouched(
         assert stored is not None
         stored.base_price = Decimal("99.00")
         session.add(
-            PricingTier(product_id=stored.product_id, min_quantity=5, unit_price=Decimal("77.00"))
+            PricingTier(
+                product_id=stored.product_id,
+                variant_id=stored.id,
+                min_quantity=5,
+                unit_price=Decimal("77.00"),
+            )
         )
     await _bling(fake, [_product(1, "Arroz Novo", price=30, changed=_now())], {1: 5})
     run = await _cycle(factory)

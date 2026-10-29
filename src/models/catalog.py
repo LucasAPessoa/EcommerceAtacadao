@@ -134,6 +134,9 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     # Relationships
     product: Mapped["Product"] = relationship(back_populates="variants")
     images: Mapped[List["ProductImage"]] = relationship(back_populates="variant")
+    pricing_tiers: Mapped[List["PricingTier"]] = relationship(
+        back_populates="variant", order_by="PricingTier.min_quantity"
+    )
 
 
 # ==========================================
@@ -219,17 +222,21 @@ class ProductImage(Base, TimestampMixin):
 class PricingTier(Base, TimestampMixin):
     __tablename__ = "pricing_tiers"
     __table_args__ = (
-        UniqueConstraint("product_id", "min_quantity", name="uq_pricing_tiers_product_min"),
+        UniqueConstraint("variant_id", "min_quantity", name="uq_pricing_tiers_variant_min"),
         CheckConstraint("min_quantity > 1", name="ck_pricing_tiers_min_quantity"),
         CheckConstraint("unit_price >= 0", name="ck_pricing_tiers_price_non_negative"),
     )
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
     product_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("products.id"))
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), index=True
+    )
     min_quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     product: Mapped["Product"] = relationship(back_populates="pricing_tiers")
+    variant: Mapped["ProductVariant"] = relationship(back_populates="pricing_tiers")
 
 
 class ProductReview(Base, TimestampMixin):
