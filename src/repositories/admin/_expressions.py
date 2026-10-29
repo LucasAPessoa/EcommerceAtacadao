@@ -19,12 +19,24 @@ from src.models.catalog import PricingTier, Product, ProductVariant
 from src.models.enums import PriceSource, PricingStatus
 from src.repositories.catalog._published import published
 
+PRICE_NOT_SET = "PRICE_NOT_SET"
+STORE_PRICE_MISSING = "STORE_PRICE_MISSING"
+TIER_NOT_BELOW_UNIT = "TIER_NOT_BELOW_UNIT"
 
-def tier_not_below_unit(variant: Any = ProductVariant) -> ColumnElement[bool]:
-    """Alguma faixa (a partir de 2) com preço >= ao da linha de 1 unidade."""
+
+def _alive(variant: Any, product: Any) -> ColumnElement[bool]:
+    """Variação e produto não excluídos (os avisos nunca valem para excluídos)."""
+    return and_(variant.deleted_at.is_(None), product.deleted_at.is_(None))
+
+
+def tier_not_below_unit(
+    variant: Any = ProductVariant, product: Any = Product
+) -> ColumnElement[bool]:
+    """Alguma faixa (a partir de 2) com preço >= ao da linha de 1 unidade (não excluídos)."""
     line_one = aliased(PricingTier)
     tier = aliased(PricingTier)
     return exists().where(
+        _alive(variant, product),
         line_one.variant_id == variant.id,
         line_one.min_quantity == 1,
         tier.variant_id == variant.id,
@@ -35,13 +47,17 @@ def tier_not_below_unit(variant: Any = ProductVariant) -> ColumnElement[bool]:
 
 def store_price_missing(variant: Any = ProductVariant, product: Any = Product) -> Any:
     """Variação publicada que usa o preço geral do Bling (vínculo sem preço)."""
-    return and_(published(variant, product), variant.price_source == PriceSource.GENERAL)
+    return and_(
+        _alive(variant, product),
+        published(variant, product),
+        variant.price_source == PriceSource.GENERAL,
+    )
 
 
 def price_not_set(variant: Any = ProductVariant, product: Any = Product) -> Any:
     """Variação de produto listado, preço geral e sem preço no Bling."""
     return and_(
-        variant.deleted_at.is_(None),
+        _alive(variant, product),
         product.store_listed.is_(True),
         variant.price_source == PriceSource.GENERAL,
         variant.base_price <= 0,
@@ -49,7 +65,11 @@ def price_not_set(variant: Any = ProductVariant, product: Any = Product) -> Any:
 
 
 def pricing_pending(variant: Any = ProductVariant, product: Any = Product) -> Any:
-    return and_(published(variant, product), variant.pricing_status == PricingStatus.PENDING)
+    return and_(
+        _alive(variant, product),
+        published(variant, product),
+        variant.pricing_status == PricingStatus.PENDING,
+    )
 
 
 def variant_pending_reason(
@@ -57,8 +77,9 @@ def variant_pending_reason(
 ) -> ColumnElement[str | None]:
     """Motivo de pendência da variação (R5), ou NULL.
 
-    Só vale para variação inativa e não excluída de produto não excluído. O primeiro
-    motivo que se aplicar, na ordem da sync: peso, medidas, preço.
+    Só vale para variação não excluída de produto não excluído. O primeiro motivo que se
+    aplicar: para variação inativa, na ordem da sync, peso, medidas, preço; depois os avisos de
+    preço (FR-011): preço não definido, preço da loja ausente, faixa não abaixo de 1 unidade.
     """
     bad_dimension = or_(
         variant.width_cm.is_(None),
@@ -68,13 +89,9 @@ def variant_pending_reason(
         variant.length_cm.is_(None),
         variant.length_cm <= 0,
     )
-    return case(
+    incomplete = case(
         (
-            and_(
-                variant.is_active.is_(False),
-                variant.deleted_at.is_(None),
-                product.deleted_at.is_(None),
-            ),
+            and_(variant.is_active.is_(False), _alive(variant, product)),
             case(
                 (or_(variant.weight_kg.is_(None), variant.weight_kg <= 0), INCOMPLETE_WEIGHT),
                 (bad_dimension, INCOMPLETE_DIMENSIONS),
@@ -84,6 +101,13 @@ def variant_pending_reason(
         ),
         else_=None,
     )
+    warning = case(
+        (price_not_set(variant, product), PRICE_NOT_SET),
+        (store_price_missing(variant, product), STORE_PRICE_MISSING),
+        (tier_not_below_unit(variant, product), TIER_NOT_BELOW_UNIT),
+        else_=None,
+    )
+    return func.coalesce(incomplete, warning)
 
 
 def variant_aggregates() -> Any:

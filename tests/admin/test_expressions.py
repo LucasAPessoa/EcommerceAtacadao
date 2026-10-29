@@ -150,3 +150,69 @@ async def test_variant_aggregates(db: AsyncEngine, seed: Seeder) -> None:
     assert str(rows[full][1]) == "12.50" and str(rows[full][2]) == "30.00"
     assert rows[full][3] == 1
     assert rows[empty] == (0, None, None, 0)
+
+
+async def test_price_warnings_ignore_deleted_variant_and_product(
+    db: AsyncEngine, seed: Seeder
+) -> None:
+    tag = seed.tag
+    broken: dict[str, Any] = {"source": "GENERAL", "tiers": ((5, "10.00"),)}
+    live = await seed.product(
+        variants=[
+            V(sku=f"{tag}-live", **broken),
+            V(sku=f"{tag}-deleted", deleted=True, **broken),
+        ]
+    )
+    dead = await seed.product(deleted=True, variants=[V(sku=f"{tag}-dead", **broken)])
+
+    async with AsyncSession(db) as session:
+        rows = await session.execute(
+            select(
+                ProductVariant.bling_sku,
+                ex.tier_not_below_unit(),
+                ex.store_price_missing(),
+                ex.price_not_set(),
+                ex.pricing_pending(),
+            )
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(Product.id.in_([live, dead]))
+        )
+        got = {r[0].removeprefix(f"{tag}-"): tuple(r[1:]) for r in rows.all()}
+
+    assert got["live"] == (True, True, False, False)
+    assert got["deleted"] == (False, False, False, False)
+    assert got["dead"] == (False, False, False, False)
+
+
+async def test_pending_reason_emits_price_warnings(db: AsyncEngine, seed: Seeder) -> None:
+    tag = seed.tag
+    pid = await seed.product(
+        variants=[
+            V(sku=f"{tag}-ok"),
+            V(sku=f"{tag}-notset", price="0.00", source="GENERAL", line_one=False, active=False),
+            V(sku=f"{tag}-unset", price="0.00", source="GENERAL", line_one=False),
+            V(sku=f"{tag}-missing", source="GENERAL"),
+            V(sku=f"{tag}-tier", tiers=((5, "10.00"),)),
+            V(sku=f"{tag}-tierdel", tiers=((5, "10.00"),), deleted=True),
+            V(sku=f"{tag}-weight", active=False, weight=None, source="GENERAL"),
+        ]
+    )
+    unlisted = await seed.product(listed=False, variants=[V(sku=f"{tag}-out", source="GENERAL")])
+    dead = await seed.product(deleted=True, variants=[V(sku=f"{tag}-dead", source="GENERAL")])
+
+    got: dict[str, Optional[str]] = {}
+    for p in (pid, unlisted, dead):
+        got |= {f"{p}/{k}": v for k, v in (await _reasons(db, p)).items()}
+
+    by_sku = {k.split("/", 1)[1]: v for k, v in got.items()}
+    assert by_sku == {
+        "ok": None,
+        "notset": INCOMPLETE_PRICE,  # a incompletude da sync vence o aviso
+        "unset": "PRICE_NOT_SET",
+        "missing": "STORE_PRICE_MISSING",
+        "tier": "TIER_NOT_BELOW_UNIT",
+        "tierdel": None,
+        "weight": INCOMPLETE_WEIGHT,
+        "out": None,
+        "dead": None,
+    }
