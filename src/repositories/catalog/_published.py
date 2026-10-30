@@ -15,15 +15,20 @@ def has_unit_price_line(variant: Any = ProductVariant) -> ColumnElement[bool]:
     return exists().where(line.variant_id == variant.id, line.min_quantity == 1)
 
 
-def published(variant: Any = ProductVariant, product: Any = Product) -> ColumnElement[bool]:
-    """Variação ativa e não excluída, de produto ativo, não excluído e listado, com linha 1."""
+def published(
+    variant: Any = ProductVariant, product: Any = Product, has_line: Any = None
+) -> ColumnElement[bool]:
+    """Variação ativa e não excluída, de produto ativo, não excluído e listado, com linha 1.
+
+    ``has_line`` substitui o EXISTS da linha 1 quando a consulta já juntou as faixas.
+    """
     return and_(
         variant.is_active.is_(True),
         variant.deleted_at.is_(None),
         product.is_active.is_(True),
         product.deleted_at.is_(None),
         product.store_listed.is_(True),
-        has_unit_price_line(variant),
+        has_unit_price_line(variant) if has_line is None else has_line,
     )
 
 

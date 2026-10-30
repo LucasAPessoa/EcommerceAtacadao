@@ -29,10 +29,44 @@ def _alive(variant: Any, product: Any) -> ColumnElement[bool]:
     return and_(variant.deleted_at.is_(None), product.deleted_at.is_(None))
 
 
+def tier_stats() -> Any:
+    """Por variação: preço da linha de 1 unidade e maior preço das faixas a partir de 2.
+
+    Um único hash aggregate sobre as faixas; o agregado por produto junta isto em vez de
+    rodar EXISTS correlacionados por variação (que o planner pode reexecutar por produto).
+    """
+    return (
+        select(
+            PricingTier.variant_id.label("variant_id"),
+            func.max(case((PricingTier.min_quantity == 1, PricingTier.unit_price))).label(
+                "unit_line"
+            ),
+            func.max(case((PricingTier.min_quantity > 1, PricingTier.unit_price))).label(
+                "max_tier"
+            ),
+        )
+        .where(PricingTier.variant_id.is_not(None))
+        .group_by(PricingTier.variant_id)
+        .subquery("tier_stats")
+    )
+
+
+def _has_line(tiers: Any) -> Any:
+    return None if tiers is None else tiers.c.unit_line.is_not(None)
+
+
 def tier_not_below_unit(
-    variant: Any = ProductVariant, product: Any = Product
+    variant: Any = ProductVariant, product: Any = Product, tiers: Any = None
 ) -> ColumnElement[bool]:
-    """Alguma faixa (a partir de 2) com preço >= ao da linha de 1 unidade (não excluídos)."""
+    """Alguma faixa (a partir de 2) com preço >= ao da linha de 1 unidade (não excluídos).
+
+    Com ``tiers`` (de :func:`tier_stats`, já juntado), compara as colunas em vez do EXISTS.
+    """
+    if tiers is not None:
+        return and_(
+            _alive(variant, product),
+            func.coalesce(tiers.c.max_tier >= tiers.c.unit_line, False),
+        )
     line_one = aliased(PricingTier)
     tier = aliased(PricingTier)
     return exists().where(
@@ -45,11 +79,13 @@ def tier_not_below_unit(
     )
 
 
-def store_price_missing(variant: Any = ProductVariant, product: Any = Product) -> Any:
+def store_price_missing(
+    variant: Any = ProductVariant, product: Any = Product, tiers: Any = None
+) -> Any:
     """Variação publicada que usa o preço geral do Bling (vínculo sem preço)."""
     return and_(
         _alive(variant, product),
-        published(variant, product),
+        published(variant, product, _has_line(tiers)),
         variant.price_source == PriceSource.GENERAL,
     )
 
@@ -64,16 +100,18 @@ def price_not_set(variant: Any = ProductVariant, product: Any = Product) -> Any:
     )
 
 
-def pricing_pending(variant: Any = ProductVariant, product: Any = Product) -> Any:
+def pricing_pending(
+    variant: Any = ProductVariant, product: Any = Product, tiers: Any = None
+) -> Any:
     return and_(
         _alive(variant, product),
-        published(variant, product),
+        published(variant, product, _has_line(tiers)),
         variant.pricing_status == PricingStatus.PENDING,
     )
 
 
 def variant_pending_reason(
-    variant: Any = ProductVariant, product: Any = Product
+    variant: Any = ProductVariant, product: Any = Product, tiers: Any = None
 ) -> ColumnElement[str | None]:
     """Motivo de pendência da variação (R5), ou NULL.
 
@@ -103,8 +141,8 @@ def variant_pending_reason(
     )
     warning = case(
         (price_not_set(variant, product), PRICE_NOT_SET),
-        (store_price_missing(variant, product), STORE_PRICE_MISSING),
-        (tier_not_below_unit(variant, product), TIER_NOT_BELOW_UNIT),
+        (store_price_missing(variant, product, tiers), STORE_PRICE_MISSING),
+        (tier_not_below_unit(variant, product, tiers), TIER_NOT_BELOW_UNIT),
         else_=None,
     )
     return func.coalesce(incomplete, warning)
@@ -117,7 +155,8 @@ def variant_aggregates() -> Any:
     ordenar e filtrar milhares de produtos sem varrer as variações por linha.
     """
     selling = and_(ProductVariant.is_active.is_(True), ProductVariant.deleted_at.is_(None))
-    reason = variant_pending_reason()
+    tiers = tier_stats()
+    reason = variant_pending_reason(tiers=tiers)
     return (
         select(
             ProductVariant.product_id.label("product_id"),
@@ -127,14 +166,19 @@ def variant_aggregates() -> Any:
             func.min(case((selling, ProductVariant.base_price), else_=None)).label("min_price"),
             func.max(case((selling, ProductVariant.base_price), else_=None)).label("max_price"),
             func.count(case((reason.is_not(None), literal(1)), else_=None)).label("pending_count"),
-            func.count(case((pricing_pending(), literal(1)), else_=None)).label("pricing_pending"),
-            func.count(case((tier_not_below_unit(), literal(1)), else_=None)).label("tier_warning"),
-            func.count(case((store_price_missing(), literal(1)), else_=None)).label(
+            func.count(case((pricing_pending(tiers=tiers), literal(1)), else_=None)).label(
+                "pricing_pending"
+            ),
+            func.count(case((tier_not_below_unit(tiers=tiers), literal(1)), else_=None)).label(
+                "tier_warning"
+            ),
+            func.count(case((store_price_missing(tiers=tiers), literal(1)), else_=None)).label(
                 "store_price_missing"
             ),
             func.count(case((price_not_set(), literal(1)), else_=None)).label("price_not_set"),
         )
         .join(Product, Product.id == ProductVariant.product_id)
+        .outerjoin(tiers, tiers.c.variant_id == ProductVariant.id)
         .group_by(ProductVariant.product_id)
         .subquery("variant_agg")
     )
