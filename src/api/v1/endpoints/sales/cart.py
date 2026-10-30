@@ -1,12 +1,14 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from src.core.db import DbSession
 from src.core.sec import require_role
 from src.models.identity import User
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
 from src.repositories.sales.cart_repository import CartRepository
+from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.response_schema import BaseResponse
 from src.schemas.sales.cart_schema import (
     CartItemCreateSchema,
@@ -14,6 +16,7 @@ from src.schemas.sales.cart_schema import (
     CartResponseSchema,
 )
 from src.services.sales.cart_service import CartService
+from src.services.sales.stock import InsufficientStockError
 
 router = APIRouter(prefix="/cart", tags=["Cart"])
 
@@ -22,6 +25,15 @@ def get_cart_service(session: DbSession) -> CartService:
     return CartService(
         repository=CartRepository(session),
         variant_repository=ProductVariantRepository(session),
+        stock_repository=OrderRepository(session),
+    )
+
+
+def _stock_conflict(error: InsufficientStockError) -> JSONResponse:
+    """409 com `detail` (texto) e `available` (máximo que ainda pode ser pedido, >= 0)."""
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": str(error), "available": error.available},
     )
 
 
@@ -47,6 +59,8 @@ async def add_item_to_cart(
     try:
         data = await service.add_item(current_user.id, item_in)
         return BaseResponse(status="success", data=data)
+    except InsufficientStockError as e:
+        return _stock_conflict(e)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -59,7 +73,12 @@ async def update_cart_item(
     service: CartService = Depends(get_cart_service),
 ):
     """Atualiza a quantidade de um item do carrinho."""
-    data = await service.update_item_quantity(current_user.id, item_id, item_in)
+    try:
+        data = await service.update_item_quantity(current_user.id, item_id, item_in)
+    except InsufficientStockError as e:
+        return _stock_conflict(e)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Item não encontrado no carrinho."
