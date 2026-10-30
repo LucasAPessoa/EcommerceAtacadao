@@ -24,6 +24,7 @@ from src.schemas.sales.checkout_schema import (
 from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.operations.shipping_service import ShippingService
 from src.services.sales.pricing import select_unit_price
+from src.services.sales.stock import ensure_stock
 
 MONEY_QUANTUM = Decimal("0.01")
 
@@ -312,13 +313,7 @@ class CheckoutService:
         now = datetime.now(UTC).replace(tzinfo=None)
         for line in lines:
             variant = variants_by_id[line["variant_id"]]
-            reserved = await self.repository.get_active_reserved_quantity(variant.id, now)
-            available = variant.stock_quantity - reserved
-            if line["quantity"] > available:
-                raise ValueError(
-                    f"Estoque insuficiente para '{variant.variation_name}'. "
-                    f"Disponível: {max(available, 0)}."
-                )
+            await ensure_stock(self.repository, variant, line["quantity"], now)
 
         address = await self.repository.get_address_for_user(checkout_in.address_id, user_id)
         if address is None:

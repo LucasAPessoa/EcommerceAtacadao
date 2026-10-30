@@ -4,6 +4,7 @@ from uuid import UUID
 
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
 from src.repositories.sales.cart_repository import CartRepository
+from src.repositories.sales.order_repository import OrderRepository
 from src.schemas.sales.cart_schema import (
     CartItemCreateSchema,
     CartItemResponseSchema,
@@ -11,12 +12,19 @@ from src.schemas.sales.cart_schema import (
     CartResponseSchema,
 )
 from src.services.sales.pricing import select_unit_price
+from src.services.sales.stock import InsufficientStockError, ensure_stock, get_available_stock
 
 
 class CartService:
-    def __init__(self, repository: CartRepository, variant_repository: ProductVariantRepository):
+    def __init__(
+        self,
+        repository: CartRepository,
+        variant_repository: ProductVariantRepository,
+        stock_repository: OrderRepository,
+    ):
         self.repository = repository
         self.variant_repository = variant_repository
+        self.stock_repository = stock_repository
 
     @staticmethod
     def _response(cart) -> CartResponseSchema:
@@ -76,10 +84,16 @@ class CartService:
         cart = await self._get_or_create_cart(user_id)
 
         existing_item = await self.repository.get_item_by_variant(cart.id, item_in.variant_id)
-        if existing_item:
-            await self.repository.update_item_quantity(
-                existing_item, existing_item.quantity + item_in.quantity
+        in_cart = existing_item.quantity if existing_item else 0
+        total_quantity = item_in.quantity + in_cart
+        available = await get_available_stock(self.stock_repository, variant)
+        if total_quantity > available:
+            # No add, `available` é o quanto ainda cabe além do que já está no carrinho.
+            raise InsufficientStockError(
+                variant.variation_name, max(available - in_cart, 0), in_cart
             )
+        if existing_item:
+            await self.repository.update_item_quantity(existing_item, total_quantity)
         else:
             await self.repository.add_item(cart.id, item_in.variant_id, item_in.quantity)
 
@@ -94,6 +108,10 @@ class CartService:
         if not item:
             return None
 
+        variant = await self.variant_repository.get_by_id(item.variant_id)
+        if variant is None:
+            raise ValueError("Variação de produto não encontrada.")
+        await ensure_stock(self.stock_repository, variant, item_in.quantity)
         await self.repository.update_item_quantity(item, item_in.quantity)
 
         updated_cart = await self.repository.get_by_id(cart.id)  # type: ignore[union-attr]  # item só existe se cart existe
