@@ -330,7 +330,8 @@ async def limited_variant_id():
     from sqlalchemy.pool import NullPool
 
     from src.core.config import settings
-    from src.models.catalog import Product, ProductVariant
+    from src.models.catalog import PricingTier, Product, ProductVariant
+    from src.models.enums import PricingStatus
     from src.models.sales import CartItem
 
     host = urlparse(settings.DATABASE_URL.replace("+asyncpg", "")).hostname
@@ -345,7 +346,8 @@ async def limited_variant_id():
     AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     suffix = uuid4().hex[:12]
     async with AsyncSessionLocal() as session:
-        product = Product(name=f"Produto estoque {suffix}", is_active=True)
+        # Publicada e com preço confirmado (spec 008): senão o carrinho recusa antes do estoque.
+        product = Product(name=f"Produto estoque {suffix}", is_active=True, store_listed=True)
         session.add(product)
         await session.flush()
         variant = ProductVariant(
@@ -354,8 +356,11 @@ async def limited_variant_id():
             variation_name="Unica",
             base_price=Decimal("10.00"),
             stock_quantity=5,
+            pricing_status=PricingStatus.CONFIRMED,
         )
         session.add(variant)
+        await session.flush()
+        session.add(PricingTier(variant_id=variant.id, min_quantity=1, unit_price=Decimal("10.00")))
         await session.commit()
         variant_id, product_id = variant.id, product.id
 
@@ -363,6 +368,7 @@ async def limited_variant_id():
 
     async with AsyncSessionLocal() as session:
         await session.execute(delete(CartItem).where(CartItem.variant_id == variant_id))
+        await session.execute(delete(PricingTier).where(PricingTier.variant_id == variant_id))
         await session.execute(delete(ProductVariant).where(ProductVariant.id == variant_id))
         await session.execute(delete(Product).where(Product.id == product_id))
         await session.commit()
