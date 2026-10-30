@@ -85,4 +85,4 @@ Novos campos: `pricing_pending_products`, `tier_warning_products`, `store_price_
 Somente leitura; cada item ganha `variant_id`; filtros `variant_id` e `product_id`; só variações publicadas e confirmadas.
 
 ## Carrinho e pedido
-Sem campo novo. `unit_price` do item vem da tabela da variação; `pricing_tier_min_quantity` = `null` quando vale a linha de 1 unidade.
+Sem campo novo. No carrinho, `unit_price` do item vem da tabela da variação (o item do carrinho não expõe a faixa aplicada). No pedido, o snapshot do item guarda `pricing_tier_min_quantity`, que fica `null` quando vale a linha de 1 unidade.
