@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import CheckConstraint, Integer, String, text
+from sqlalchemy import Boolean, CheckConstraint, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
@@ -19,3 +19,6 @@ class StoreSettings(Base, TimestampMixin):
     )
     theme: Mapped[str] = mapped_column(String(50), nullable=False)
     brand_color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    pricing_auto_confirm: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )

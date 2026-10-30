@@ -119,3 +119,14 @@ class CatalogSyncRunStatusEnum(str, enum.Enum):
     PARTIAL = "PARTIAL"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+
+
+class PriceSource(str, enum.Enum):
+    VARIANT_LINK = "VARIANT_LINK"
+    PARENT_LINK = "PARENT_LINK"
+    GENERAL = "GENERAL"
+
+
+class PricingStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
