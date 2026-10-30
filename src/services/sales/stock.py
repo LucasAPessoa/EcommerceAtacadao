@@ -7,9 +7,16 @@ from src.repositories.sales.order_repository import OrderRepository
 class InsufficientStockError(ValueError):
     """Quantidade pedida acima do estoque disponível (estoque menos reservas ativas)."""
 
-    def __init__(self, variation_name: str, available: int):
+    def __init__(self, variation_name: str, available: int, in_cart: int = 0):
         self.available = available
-        super().__init__(f"Estoque insuficiente para '{variation_name}'. Disponível: {available}.")
+        message = f"Estoque insuficiente para '{variation_name}'. Disponível: {available}."
+        if in_cart:
+            remaining = f"pode adicionar mais {available}" if available else "não cabe mais nenhum"
+            message = (
+                f"Estoque insuficiente para '{variation_name}'. Você já tem {in_cart} no "
+                f"carrinho e {remaining}."
+            )
+        super().__init__(message)
 
 
 async def get_available_stock(

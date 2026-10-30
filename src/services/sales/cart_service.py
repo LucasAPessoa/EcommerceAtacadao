@@ -12,7 +12,7 @@ from src.schemas.sales.cart_schema import (
     CartResponseSchema,
 )
 from src.services.sales.pricing import select_unit_price
-from src.services.sales.stock import ensure_stock
+from src.services.sales.stock import InsufficientStockError, ensure_stock, get_available_stock
 
 
 class CartService:
@@ -84,8 +84,14 @@ class CartService:
         cart = await self._get_or_create_cart(user_id)
 
         existing_item = await self.repository.get_item_by_variant(cart.id, item_in.variant_id)
-        total_quantity = item_in.quantity + (existing_item.quantity if existing_item else 0)
-        await ensure_stock(self.stock_repository, variant, total_quantity)
+        in_cart = existing_item.quantity if existing_item else 0
+        total_quantity = item_in.quantity + in_cart
+        available = await get_available_stock(self.stock_repository, variant)
+        if total_quantity > available:
+            # No add, `available` é o quanto ainda cabe além do que já está no carrinho.
+            raise InsufficientStockError(
+                variant.variation_name, max(available - in_cart, 0), in_cart
+            )
         if existing_item:
             await self.repository.update_item_quantity(existing_item, total_quantity)
         else:

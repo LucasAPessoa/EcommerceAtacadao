@@ -46,8 +46,19 @@ async def test_add_sums_with_existing_quantity() -> None:
     service, variant, repository, _ = _service(stock=150, existing=100)
     with pytest.raises(InsufficientStockError) as exc:
         await service.add_item(uuid4(), CartItemCreateSchema(variant_id=variant.id, quantity=51))
-    assert exc.value.available == 150
+    # No add, `available` é o quanto ainda cabe além dos 100 já no carrinho.
+    assert exc.value.available == 50
+    assert "já tem 100 no carrinho" in str(exc.value)
     repository.update_item_quantity.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_with_cart_full_reports_zero() -> None:
+    service, variant, _, _ = _service(stock=150, reserved=60, existing=100)
+    with pytest.raises(InsufficientStockError) as exc:
+        await service.add_item(uuid4(), CartItemCreateSchema(variant_id=variant.id, quantity=1))
+    assert exc.value.available == 0
+    assert "não cabe mais nenhum" in str(exc.value)
 
 
 @pytest.mark.asyncio

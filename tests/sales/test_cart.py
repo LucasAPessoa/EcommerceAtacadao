@@ -385,6 +385,30 @@ class TestCartStockLimit:
         assert "Estoque insuficiente" in body["detail"]
 
     @pytest.mark.asyncio
+    async def test_add_with_item_in_cart_returns_remaining_available(
+        self, client: httpx.AsyncClient, user_token: str, limited_variant_id: str
+    ):
+        add = await client.post(
+            f"{API_V1_PREFIX}/sales/cart/items",
+            json={"variant_id": limited_variant_id, "quantity": 2},
+            headers=auth_headers(user_token),
+        )
+        assert add.status_code == 201, add.text
+        resp = await client.post(
+            f"{API_V1_PREFIX}/sales/cart/items",
+            json={"variant_id": limited_variant_id, "quantity": 4},
+            headers=auth_headers(user_token),
+        )
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["available"] == 3
+        ok = await client.post(
+            f"{API_V1_PREFIX}/sales/cart/items",
+            json={"variant_id": limited_variant_id, "quantity": 3},
+            headers=auth_headers(user_token),
+        )
+        assert ok.status_code == 201, ok.text
+
+    @pytest.mark.asyncio
     async def test_patch_above_stock_returns_409_with_available(
         self, client: httpx.AsyncClient, user_token: str, limited_variant_id: str
     ):
