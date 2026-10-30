@@ -10,18 +10,22 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Table,
     Text,
     UniqueConstraint,
+    text,
 )
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, SoftDeleteMixin, TimestampMixin, uuid_primary_key
+from .enums import PriceSource, PricingStatus
 
 # ==========================================
 # ASSOCIATION TABLES
@@ -69,6 +73,8 @@ class Product(Base, TimestampMixin, SoftDeleteMixin):
     description: Mapped[Optional[str]] = mapped_column(Text)  # Bling's descricaoCurta
     complementary_description: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(default=False)
+    bling_store_link_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    store_listed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
 
     # Bling-specific properties
     product_type: Mapped[Optional[str]] = mapped_column(String(10))  # e.g., "P" (Product)
@@ -125,6 +131,17 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     last_bling_sync: Mapped[Optional[datetime]] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(default=True)
 
+    # Preço por variação (vínculo produto-loja do Bling)
+    bling_store_link_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    store_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    price_source: Mapped[Optional[PriceSource]] = mapped_column(SQLEnum(PriceSource), nullable=True)
+    pricing_status: Mapped[PricingStatus] = mapped_column(
+        SQLEnum(PricingStatus),
+        default=PricingStatus.PENDING,
+        server_default=PricingStatus.PENDING.value,
+    )
+    pricing_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Logistics Data
     weight_kg: Mapped[Optional[float]] = mapped_column(Float)
     height_cm: Mapped[Optional[float]] = mapped_column(Float)
@@ -134,6 +151,9 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     # Relationships
     product: Mapped["Product"] = relationship(back_populates="variants")
     images: Mapped[List["ProductImage"]] = relationship(back_populates="variant")
+    pricing_tiers: Mapped[List["PricingTier"]] = relationship(
+        back_populates="variant", order_by="PricingTier.min_quantity"
+    )
 
 
 # ==========================================
@@ -219,17 +239,31 @@ class ProductImage(Base, TimestampMixin):
 class PricingTier(Base, TimestampMixin):
     __tablename__ = "pricing_tiers"
     __table_args__ = (
-        UniqueConstraint("product_id", "min_quantity", name="uq_pricing_tiers_product_min"),
-        CheckConstraint("min_quantity > 1", name="ck_pricing_tiers_min_quantity"),
+        UniqueConstraint("variant_id", "min_quantity", name="uq_pricing_tiers_variant_min"),
+        # Legado (até o PR 2b): faixas sem variação continuam únicas por produto.
+        Index(
+            "uq_pricing_tiers_product_min_legacy",
+            "product_id",
+            "min_quantity",
+            unique=True,
+            postgresql_where=text("variant_id IS NULL"),
+        ),
+        CheckConstraint("min_quantity >= 1", name="ck_pricing_tiers_min_quantity"),
         CheckConstraint("unit_price >= 0", name="ck_pricing_tiers_price_non_negative"),
     )
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
-    product_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("products.id"))
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("products.id"), nullable=True
+    )
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), nullable=True, index=True
+    )
     min_quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
-    product: Mapped["Product"] = relationship(back_populates="pricing_tiers")
+    product: Mapped[Optional["Product"]] = relationship(back_populates="pricing_tiers")
+    variant: Mapped[Optional["ProductVariant"]] = relationship(back_populates="pricing_tiers")
 
 
 class ProductReview(Base, TimestampMixin):
