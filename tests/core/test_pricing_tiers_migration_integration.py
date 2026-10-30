@@ -181,6 +181,37 @@ async def test_migration_pricing_tiers(pg_url) -> None:
 
         # downgrade reverte o schema e o upgrade volta a passar sem drift
         _alembic(pg_url, "downgrade", PREVIOUS_HEAD)
+        await engine.dispose()  # conexões do pool guardam os tipos de antes do downgrade
+        legacy_sql = (
+            "INSERT INTO pricing_tiers (id, product_id, min_quantity, unit_price, "
+            "created_at, updated_at) VALUES (:id, :p, :q, 5, now(), now())"
+        )
+        async with engine.begin() as conn:
+            enums = await conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_type WHERE typname IN ('pricesource', 'pricingstatus')"
+                )
+            )
+            assert enums.scalar() == 0
+            variant_col = await conn.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.columns "
+                    "WHERE table_name = 'pricing_tiers' AND column_name = 'variant_id'"
+                )
+            )
+            assert variant_col.scalar() == 0
+            # só a faixa legada (produto, 3 unidades) sobrevive ao downgrade
+            assert (await conn.execute(text("SELECT count(*) FROM pricing_tiers"))).scalar() == 1
+        # restrições antigas de volta: min_quantity > 1, product_id NOT NULL e única por produto
+        for params in (
+            {"p": product_id, "q": 1},
+            {"p": None, "q": 5},
+            {"p": product_id, "q": 3},
+        ):
+            with pytest.raises(IntegrityError):
+                async with engine.begin() as conn:
+                    await conn.execute(text(legacy_sql), {"id": uuid.uuid4(), **params})
+
         _alembic(pg_url, "upgrade", "head")
         _alembic(pg_url, "check")
     finally:
