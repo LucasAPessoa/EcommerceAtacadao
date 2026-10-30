@@ -10,7 +10,6 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
-    Index,
     Integer,
     Numeric,
     String,
@@ -101,7 +100,6 @@ class Product(Base, TimestampMixin, SoftDeleteMixin):
         back_populates="product", cascade="all, delete-orphan"
     )
 
-    pricing_tiers: Mapped[List["PricingTier"]] = relationship(back_populates="product")
     reviews: Mapped[List["ProductReview"]] = relationship(back_populates="product")
     questions: Mapped[List["ProductQuestion"]] = relationship(back_populates="product")
 
@@ -240,30 +238,18 @@ class PricingTier(Base, TimestampMixin):
     __tablename__ = "pricing_tiers"
     __table_args__ = (
         UniqueConstraint("variant_id", "min_quantity", name="uq_pricing_tiers_variant_min"),
-        # Legado (até o PR 2b): faixas sem variação continuam únicas por produto.
-        Index(
-            "uq_pricing_tiers_product_min_legacy",
-            "product_id",
-            "min_quantity",
-            unique=True,
-            postgresql_where=text("variant_id IS NULL"),
-        ),
         CheckConstraint("min_quantity >= 1", name="ck_pricing_tiers_min_quantity"),
         CheckConstraint("unit_price >= 0", name="ck_pricing_tiers_price_non_negative"),
     )
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
-    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("products.id"), nullable=True
-    )
-    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), nullable=True, index=True
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("product_variants.id"), index=True
     )
     min_quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
-    product: Mapped[Optional["Product"]] = relationship(back_populates="pricing_tiers")
-    variant: Mapped[Optional["ProductVariant"]] = relationship(back_populates="pricing_tiers")
+    variant: Mapped["ProductVariant"] = relationship(back_populates="pricing_tiers")
 
 
 class ProductReview(Base, TimestampMixin):

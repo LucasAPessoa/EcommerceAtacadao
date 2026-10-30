@@ -218,7 +218,6 @@ class Seeder:
                 )
                 for table in (
                     "product_variants",
-                    "pricing_tiers",
                     "product_category",
                     "product_site_categories",
                     "product_site_presentation",
