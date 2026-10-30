@@ -102,7 +102,9 @@ async def test_add_item_rejects_unavailable_variation(target: str) -> None:
     else:
         variant.product.store_listed = False
     variants = SimpleNamespace(get_for_sale=AsyncMock(return_value=variant))
-    service = CartService(repository=AsyncMock(), variant_repository=variants)
+    service = CartService(
+        repository=AsyncMock(), variant_repository=variants, stock_repository=AsyncMock()
+    )
 
     with pytest.raises(ValueError, match="não está disponível"):
         await service.add_item(uuid4(), SimpleNamespace(variant_id=variant.id, quantity=1))
