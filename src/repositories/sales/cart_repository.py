@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models.catalog import Product, ProductVariant
+from src.models.catalog import ProductVariant
 from src.models.sales import Cart, CartItem
 
 
@@ -27,8 +27,10 @@ class CartRepository:
             .options(
                 selectinload(Cart.items)
                 .selectinload(CartItem.variant)
-                .selectinload(ProductVariant.product)
-                .selectinload(Product.pricing_tiers)
+                .options(
+                    selectinload(ProductVariant.product),
+                    selectinload(ProductVariant.pricing_tiers),
+                )
             )
             # A sessão pode já conter o mesmo carrinho com `items` carregado.
             # Após add/update/delete, precisamos sobrescrever esse snapshot para

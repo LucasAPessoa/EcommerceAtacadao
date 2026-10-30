@@ -115,6 +115,7 @@ class Settings(BaseSettings):
     BLING_TOKEN_ENCRYPTION_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
     BLING_STATE_SIGNING_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
     BLING_ORDER_STATUS_MAP: str = ""
+    BLING_STORE_ID: str = ""
     BLING_AUTH_BASE_URL: str = "https://www.bling.com.br/Api/v3"
     BLING_API_BASE_URL: str = "https://api.bling.com.br/Api/v3"
     CATALOG_SYNC_TIME_BUDGET_SECONDS: float = Field(default=45, gt=0)

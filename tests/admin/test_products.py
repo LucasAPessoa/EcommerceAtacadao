@@ -35,7 +35,7 @@ async def _names(
 
 
 class TestSearch:
-    async def test_by_bling_name_even_when_name_is_locked(
+    async def test_by_bling_name_ignores_old_site_override(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         await seed.product("Arroz Tipo 1", presentation={"name": "Nome Personalizado Z"})
@@ -44,20 +44,22 @@ class TestSearch:
             URL, params={"q": f"{seed.tag} arroz"}, headers=auth_headers(admin_token)
         )
         item = resp.json()["data"][0]
+        by_override = await client.get(
+            URL, params={"q": "Nome Personalizado Z"}, headers=auth_headers(admin_token)
+        )
 
         assert resp.json()["meta"]["total"] == 1
-        assert item["name"] == "Nome Personalizado Z"
-        assert item["bling_name"] == f"{seed.tag} Arroz Tipo 1"
-        assert item["customized"] is True
+        assert item["name"] == item["bling_name"] == f"{seed.tag} Arroz Tipo 1"
+        assert "customized" not in item
+        assert by_override.json()["meta"]["total"] == 0
 
-    async def test_by_custom_name_code_sku_and_gtin(
+    async def test_by_code_sku_and_gtin(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         tag = seed.tag
         await seed.product(
             "Feijao",
             code=f"{tag}-COD",
-            presentation={"name": f"{tag}Vitrine Especial"},
             variants=[V(sku=f"{tag}-SKU-A", gtin=f"{tag}789")],
         )
         await seed.product("Outro")
@@ -66,10 +68,10 @@ class TestSearch:
             resp = await client.get(URL, params={"q": q}, headers=auth_headers(admin_token))
             return resp.json()["meta"]["total"]
 
-        assert await total(f"{tag}vitrine especial") == 1  # nome do site, sem caixa
         assert await total(f"{tag}-cod") == 1  # code
         assert await total(f"{tag}-sku-a") == 1  # bling_sku
         assert await total(f"{tag}789") == 1  # gtin
+        assert await total(f"{tag} feijao") == 1  # nome do Bling, sem caixa
         assert await total(tag) == 2
 
     async def test_like_wildcards_are_literal(
@@ -89,12 +91,12 @@ class TestFilters:
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         cat = await seed.category("Bebidas")
-        # A: à venda, estoque baixo (2), oculto, destaque, personalizado, na categoria
+        # A: à venda, estoque baixo (2), oculto, destaque, na categoria
         await seed.product(
             "A",
             categories=(cat,),
             variants=[V(stock=2)],
-            presentation={"visible": False, "featured": True, "name": f"{seed.tag} A"},
+            presentation={"visible": False, "featured": True},
         )
         # B: à venda, estoque alto, visível (sem apresentação), com pendência
         await seed.product(
@@ -120,37 +122,28 @@ class TestFilters:
         assert await only(low_stock="true") == ["A"]  # C está fora de venda
         assert await only(low_stock="false") == ["B", "C"]
         assert await only(pending="true") == ["B"]
-        assert await only(customized="true") == ["A"]
         assert await only(category_id=str(cat)) == ["A", "B"]
         assert await only(active="true", low_stock="true", visible="false") == ["A"]
         assert await only(active="true", pending="true", category_id=str(cat)) == ["B"]
         assert await only(active="false", featured="true") == []
 
-    async def test_category_uses_effective_categories(
+    async def test_category_uses_bling_categories_only(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         bling_cat = await seed.category("Bling")
         site_cat = await seed.category("Site")
-        off_cat = await seed.category("Inativa", active=False)
         await seed.product(
             "Locked",
             categories=(bling_cat,),
-            site_categories=(site_cat, off_cat),
-            presentation={"categories_locked": True},
-        )
-        await seed.product(
-            "Unlocked",
-            categories=(bling_cat,),
             site_categories=(site_cat,),
-            presentation={"categories_locked": False},
+            presentation={"categories_locked": True},
         )
 
         async def by(cat: uuid.UUID) -> list[str]:
             return (await _names(client, admin_token, seed, category_id=str(cat)))[0]
 
-        assert await by(site_cat) == ["Locked"]
-        assert await by(bling_cat) == ["Unlocked"]
-        assert await by(off_cat) == []  # categoria do site inativa não conta
+        assert await by(bling_cat) == ["Locked"]
+        assert await by(site_cat) == []  # categoria do site (legado) não é mais lida
 
     async def test_pending_ignores_active_and_deleted_variants(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
@@ -167,6 +160,90 @@ class TestFilters:
         await seed.product("Seis", variants=[V(stock=6)])
 
         assert (await _names(client, admin_token, seed, low_stock="true"))[0] == ["Cinco"]
+
+
+class TestPricingFiltersAndWarnings:
+    async def test_pricing_status_listed_and_warning_filters(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    ) -> None:
+        await seed.product("Ok")
+        await seed.product("Pendente", variants=[V(), V(status="PENDING")])
+        # Pendência de variação não publicada (inativa) não pesa no produto.
+        await seed.product("InativaPendente", variants=[V(), V(status="PENDING", active=False)])
+        await seed.product("NaoListado", listed=False, variants=[V(status="PENDING")])
+        await seed.product("Faixa", variants=[V(tiers=((5, "10.00"),)), V(tiers=((3, "9.00"),))])
+        await seed.product("PrecoGeral", variants=[V(source="GENERAL")])
+        await seed.product(
+            "SemPreco", variants=[V(source="GENERAL", price="0.00", active=False, line_one=False)]
+        )
+
+        async def only(**params: Any) -> list[str]:
+            names, meta = await _names(client, admin_token, seed, sort="name", **params)
+            assert meta["total"] == len(names)
+            return names
+
+        assert await only(pricing_status="pending") == ["Pendente"]
+        assert await only(pricing_status="confirmed") == [
+            "Faixa", "InativaPendente", "NaoListado", "Ok", "PrecoGeral", "SemPreco",
+        ]  # fmt: skip
+        assert await only(listed="false") == ["NaoListado"]
+        assert "NaoListado" not in await only(listed="true")
+        assert await only(warning="tier_not_below_unit") == ["Faixa"]
+        assert await only(warning="store_price_missing") == ["PrecoGeral"]
+        assert await only(warning="price_not_set") == ["SemPreco"]
+        assert await only(warning="price_not_set", pricing_status="pending") == []
+
+    async def test_list_item_fields(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    ) -> None:
+        await seed.product(
+            "Tudo", variants=[V(status="PENDING", source="GENERAL", tiers=((2, "10.00"),))]
+        )
+        await seed.product("Fora", listed=False)
+        await seed.product("Inativo", active=False, listed=True)
+
+        items = {
+            i["name"].removeprefix(f"{seed.tag} "): i
+            for i in (await _list(client, admin_token, seed)).json()["data"]
+        }
+
+        assert items["Tudo"]["store_listed"] is True
+        assert items["Tudo"]["pricing_status"] == "pending"
+        assert items["Tudo"]["warnings"] == ["tier_not_below_unit", "store_price_missing"]
+        assert items["Fora"]["store_listed"] is False
+        assert items["Inativo"]["store_listed"] is False  # inativo não conta como publicado
+        listed = await _list(client, admin_token, seed, listed="true")
+        assert "Inativo" not in {
+            i["name"].removeprefix(f"{seed.tag} ") for i in listed.json()["data"]
+        }
+
+    async def test_detail_variant_pricing_fields(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    ) -> None:
+        pid = await seed.product(
+            "Detalhe",
+            variants=[
+                V(sku=f"{seed.tag}-A", status="PENDING", source="PARENT_LINK"),
+                V(sku=f"{seed.tag}-B", source="GENERAL", tiers=((4, "10.00"),)),
+                V(sku=f"{seed.tag}-C", line_one=False),
+                V(sku=f"{seed.tag}-D", price="0.00", source="GENERAL", active=False),
+            ],
+        )
+        unlisted = await seed.product("Fora", listed=False)
+
+        data = (await client.get(f"{URL}/{pid}", headers=auth_headers(admin_token))).json()["data"]
+        by = {v["bling_sku"].removeprefix(f"{seed.tag}-"): v for v in data["variants"]}
+
+        assert by["A"]["published"] is True and by["A"]["pricing_status"] == "pending"
+        assert by["A"]["price_source"] == "parent_link"
+        assert by["B"]["price_source"] == "general"
+        assert by["B"]["warnings"] == ["tier_not_below_unit", "store_price_missing"]
+        assert [t["min_quantity"] for t in by["B"]["pricing_tiers"]] == [1, 4]
+        assert by["C"]["published"] is False and by["C"]["pricing_tiers"] == []  # sem linha 1
+        assert by["D"]["published"] is False and by["D"]["warnings"] == ["price_not_set"]
+
+        fora = (await client.get(f"{URL}/{unlisted}", headers=auth_headers(admin_token))).json()
+        assert fora["data"]["variants"][0]["published"] is False  # produto não listado
 
 
 class TestSortAndPaging:
@@ -196,7 +273,7 @@ class TestSortAndPaging:
         assert await order("updated_at", "desc") == ["d-novariants", "a-low", "b-mid", "c-high"]
         assert await order("updated_at", "asc") == ["c-high", "b-mid", "a-low", "d-novariants"]
 
-    async def test_name_sort_uses_effective_name(
+    async def test_name_sort_uses_bling_name(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         await seed.product("a", presentation={"name": f"{seed.tag} z-site"})
@@ -204,7 +281,7 @@ class TestSortAndPaging:
 
         names, _ = await _names(client, admin_token, seed)
 
-        assert names == ["m", "z-site"]
+        assert names == ["a", "m"]
 
     async def test_paging_meta_and_stable_order(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
@@ -242,12 +319,14 @@ class TestSortAndPaging:
         assert item["stock"] == 5 and item["low_stock"] is True
         assert item["main_image_url"] == "https://img/b.png"
         assert item["visible"] is True and item["featured"] is False
-        assert item["pending_count"] == 0 and item["customized"] is False
+        assert item["pending_count"] == 0
+        assert item["store_listed"] is True and item["pricing_status"] == "confirmed"
+        assert item["warnings"] == []
         assert item["is_active"] is True and item["updated_at"]
         assert set(item) == {
             "id", "code", "name", "bling_name", "main_image_url", "is_active", "visible",
-            "featured", "customized", "min_price", "max_price", "stock", "low_stock",
-            "pending_count", "updated_at",
+            "featured", "store_listed", "pricing_status", "warnings", "min_price",
+            "max_price", "stock", "low_stock", "pending_count", "updated_at",
         }  # fmt: skip
 
     @pytest.mark.parametrize(
@@ -271,7 +350,7 @@ class TestSortAndPaging:
 
 
 class TestDetail:
-    async def test_detail_with_inactive_variant_and_presentation(
+    async def test_detail_with_inactive_variant_and_bling_content(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
         bling_cat = await seed.category("Bling")
@@ -280,7 +359,6 @@ class TestDetail:
             "Detalhe",
             categories=(bling_cat,),
             site_categories=(site_cat,),
-            tiers=((10, "17.9"), (5, "18.50")),
             presentation={"name": "Nome site", "categories_locked": True, "featured": True},
             variants=[
                 V(
@@ -288,6 +366,7 @@ class TestDetail:
                     price="19.90",
                     stock=10,
                     images=[("https://i/1.png", True)],
+                    tiers=((10, "17.9"), (5, "18.50")),
                 ),
                 V(sku=f"{seed.tag}-PESO", active=False, weight=None, stock=4),
                 V(sku=f"{seed.tag}-MEDIDA", active=False, width=0),
@@ -303,6 +382,12 @@ class TestDetail:
         assert resp.status_code == 200
         assert data["id"] == str(pid) and data["brand"] == "Marca" and data["unit"] == "UN"
         assert data["status"] == "A" and data["is_active"] is True
+        assert data["name"] == f"{seed.tag} Detalhe"  # sem override do site
+        assert data["description"] == "desc bling"
+        assert data["complementary_description"] is None
+        assert data["images"] == ["https://i/1.png"]
+        assert data["categories"] == [{"id": str(bling_cat), "name": f"{seed.tag}-Bling"}]
+        assert "pricing_tiers" not in data
         reasons = {v["bling_sku"].removeprefix(f"{seed.tag}-"): v for v in data["variants"]}
         assert set(reasons) == {"OK", "PESO", "MEDIDA", "PRECO", "FORA"}  # excluída fora
         assert reasons["OK"]["pending_reason"] is None
@@ -314,18 +399,20 @@ class TestDetail:
         assert reasons["MEDIDA"]["pending_reason"] == "INCOMPLETE_DIMENSIONS"
         assert reasons["PRECO"]["pending_reason"] == "INCOMPLETE_PRICE"
         assert reasons["FORA"]["pending_reason"] is None
-        assert [t["min_quantity"] for t in data["pricing_tiers"]] == [5, 10]
-        assert data["pricing_tiers"][1]["unit_price"] == "17.90"
 
-        pres = data["presentation"]
-        assert pres["name"] == {"bling": f"{seed.tag} Detalhe", "site": "Nome site", "locked": True}
-        assert pres["description"] == {"bling": "desc bling", "site": None, "locked": False}
-        assert pres["complementary_description"] == {"bling": None, "site": None, "locked": False}
-        assert [c["name"] for c in pres["categories"]["bling"]] == [f"{seed.tag}-Bling"]
-        assert pres["categories"]["site"] == [
-            {"id": str(site_cat), "name": f"{seed.tag}-Site", "is_active": True}
+        ok = reasons["OK"]
+        assert ok["published"] is True and ok["pricing_status"] == "confirmed"
+        assert ok["price_source"] == "variant_link" and ok["store_price"] == "19.90"
+        assert [(t["min_quantity"], t["unit_price"]) for t in ok["pricing_tiers"]] == [
+            (1, "19.90"),
+            (5, "18.50"),
+            (10, "17.90"),
         ]
-        assert pres["categories"]["locked"] is True
+        assert ok["warnings"] == [] and ok["pricing_confirmed_at"]
+        assert reasons["PESO"]["published"] is False  # inativa não é publicada
+
+        assert data["presentation"].keys() == {"visible", "featured", "updated_at", "updated_by"}
+        pres = data["presentation"]
         assert pres["visible"] is True and pres["featured"] is True
         assert pres["updated_by"] is None and pres["updated_at"]
 
@@ -338,10 +425,7 @@ class TestDetail:
             "presentation"
         ]
 
-        assert pres["name"]["locked"] is False and pres["name"]["site"] is None
-        assert pres["visible"] is True and pres["featured"] is False
-        assert pres["updated_at"] is None and pres["updated_by"] is None
-        assert pres["categories"] == {"bling": [], "site": [], "locked": False}
+        assert pres == {"visible": True, "featured": False, "updated_at": None, "updated_by": None}
 
     async def test_detail_updated_by(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine

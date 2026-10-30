@@ -25,7 +25,9 @@ O preview é informativo e não reserva estoque. O fluxo deve:
 1. carregar o carrinho do autenticado e rejeitar carrinho vazio;
 2. consolidar linhas por SKU;
 3. validar novamente produto e variação ativos e não excluídos;
-4. selecionar a faixa de preço aplicável à quantidade consolidada;
+4. selecionar a faixa da tabela da própria variação pela quantidade dessa variação
+   (spec 008: menor entre a linha de 1 unidade e a faixa elegível; faixa de uma
+   variação nunca vale para outra);
 5. validar cupom e calcular desconto no servidor;
 6. cotar frete com dados logísticos persistidos;
 7. devolver itens, subtotais, descontos, frete e total calculados.

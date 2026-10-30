@@ -29,10 +29,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "company": {"id": "company-a", "nome": "Empresa A Ltda", "cnpj": "11222333000181"},
     # Catálogo: "products" (detalhes no formato do Bling), "categories", "balances"
     # ({"<id>": saldo}) e "catalog_failures" ({"produtos:list:2": 503, "produtos:detail:7": 429,
-    # "categorias:1": 503, "saldos": 503}).
+    # "categorias:1": 503, "saldos": 503, "lojas:list:1": 503, "lojas:get:<id>": 503,
+    # "lojas:put:<id>": 503, "lojas:post": 503).
+    # "store_links": vínculos produto-loja no formato do Bling (GET /produtos/lojas); PUT e POST
+    # alteram esta lista e ficam registrados em /__control/calls com o corpo recebido.
     "products": [],
     "categories": [],
     "balances": {},
+    "store_links": [],
     "catalog_failures": {},
     # Imagens como links S3 assinados do Bling real: Signature/Expires mudam a cada leitura.
     "sign_images": False,
@@ -135,7 +139,7 @@ async def resource(rest: str, request: Request):
 
 
 def _catalog_guard(request: Request, key: str) -> JSONResponse | None:
-    _calls.append({"method": "GET", "path": f"/catalogo/{key}"})
+    _calls.append({"method": request.method, "path": f"/catalogo/{key}"})
     if not request.headers.get("authorization", "").startswith("Bearer access-"):
         return JSONResponse({"error": {"type": "invalid_token", "message": "unauthorized"}}, 401)
     failure = _config["catalog_failures"].get(key)
@@ -147,12 +151,85 @@ def _paginate(rows: list[Any], pagina: int, limite: int) -> list[Any]:
     return rows[start : start + limite]
 
 
+@app.get("/Api/v3/produtos/lojas")
+async def list_store_links(
+    request: Request,
+    pagina: int = 1,
+    limite: int = 100,
+    idLoja: int | None = None,
+    idProduto: int | None = None,
+):
+    if failure := _catalog_guard(request, f"lojas:list:{pagina}"):
+        return failure
+    rows = [
+        link
+        for link in _config["store_links"]
+        if (idLoja is None or (link.get("loja") or {}).get("id") == idLoja)
+        and (idProduto is None or (link.get("produto") or {}).get("id") == idProduto)
+    ]
+    return {"data": _paginate(rows, pagina, limite)}
+
+
+def _find_link(link_id: int) -> dict[str, Any] | None:
+    return next((link for link in _config["store_links"] if link["id"] == link_id), None)
+
+
+@app.get("/Api/v3/produtos/lojas/{link_id}")
+async def get_store_link(request: Request, link_id: int):
+    if failure := _catalog_guard(request, f"lojas:get:{link_id}"):
+        return failure
+    if (link := _find_link(link_id)) is None:
+        return JSONResponse({"error": {"type": "RESOURCE_NOT_FOUND", "message": "nf"}}, 404)
+    return {"data": link}
+
+
+def _invalid_code(body: dict) -> JSONResponse | None:
+    """Como o Bling real: `codigo` vazio ou "0" conta como `idProdutoLoja` ausente (121)."""
+    if str(body.get("codigo") or "").strip() in ("", "0"):
+        msg = "O campo idProdutoLoja é obrigatório."
+        error = {
+            "type": "VALIDATION_ERROR",
+            "message": "Erro de validação",
+            "description": "Erro de validação",
+            "fields": [{"code": 121, "msg": msg, "element": "idProdutoLoja"}],
+        }
+        return JSONResponse({"error": error}, 400)
+    return None
+
+
+@app.put("/Api/v3/produtos/lojas/{link_id}")
+async def put_store_link(request: Request, link_id: int):
+    if failure := _catalog_guard(request, f"lojas:put:{link_id}"):
+        return failure
+    body = await request.json()
+    if invalid := _invalid_code(body):
+        return invalid
+    _calls.append({"method": "PUT", "path": f"/produtos/lojas/{link_id}", "body": body})
+    if (link := _find_link(link_id)) is None:
+        return JSONResponse({"error": {"type": "RESOURCE_NOT_FOUND", "message": "nf"}}, 404)
+    link.clear()
+    link.update({**body, "id": link_id})
+    return {}
+
+
+@app.post("/Api/v3/produtos/lojas")
+async def create_store_link(request: Request):
+    if failure := _catalog_guard(request, "lojas:post"):
+        return failure
+    body = await request.json()
+    if invalid := _invalid_code(body):
+        return invalid
+    _calls.append({"method": "POST", "path": "/produtos/lojas", "body": body})
+    link_id = max([link["id"] for link in _config["store_links"]], default=1_029_000_000) + 1
+    _config["store_links"].append({**body, "id": link_id})
+    return JSONResponse({"data": {"id": link_id}}, status_code=201)
+
+
 @app.get("/Api/v3/produtos")
 async def list_products(
     request: Request,
     pagina: int = 1,
     limite: int = 100,
-    dataAlteracaoInicial: str | None = None,
     situacao: str | None = None,
 ):
     if failure := _catalog_guard(request, f"produtos:list:{pagina}"):
@@ -160,12 +237,6 @@ async def list_products(
     rows = []
     for product in _config["products"]:
         changed = product.get("dataAlteracao")
-        if (
-            dataAlteracaoInicial
-            and not _config.get("ignore_changed_filter")
-            and not (changed and changed >= dataAlteracaoInicial)
-        ):
-            continue
         if situacao and product.get("situacao", "A") != situacao:
             continue
         rows.append(

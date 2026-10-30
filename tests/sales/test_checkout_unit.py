@@ -6,30 +6,35 @@ from uuid import uuid4
 
 import pytest
 
-from src.models.enums import DiscountTypeEnum, PaymentMethodEnum
+from src.models.enums import DiscountTypeEnum, PaymentMethodEnum, PricingStatus
 from src.schemas.sales.checkout_schema import CheckoutConfirmSchema
 from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.sales.checkout_service import CheckoutService
 
 
-def _variant(*, stock: int = 20):
+def _tiers(*rows):
+    return [SimpleNamespace(min_quantity=q, unit_price=Decimal(p)) for q, p in rows]
+
+
+def _variant(*, stock: int = 20, tiers=((1, "10.00"), (5, "8.50"), (10, "7.25"))):
     product_id = uuid4()
     product = SimpleNamespace(
         id=product_id,
         name="Produto atacadista",
         is_active=True,
-        pricing_tiers=[
-            SimpleNamespace(min_quantity=5, unit_price=Decimal("8.50")),
-            SimpleNamespace(min_quantity=10, unit_price=Decimal("7.25")),
-        ],
+        deleted_at=None,
+        store_listed=True,
     )
     return SimpleNamespace(
         id=uuid4(),
         product_id=product_id,
         product=product,
+        pricing_status=PricingStatus.CONFIRMED,
+        pricing_tiers=_tiers(*tiers),
         base_price=Decimal("10.00"),
         stock_quantity=stock,
         is_active=True,
+        deleted_at=None,
         variation_name="Caixa",
         bling_sku="SKU-CAIXA",
         weight_kg=1.0,
@@ -59,6 +64,56 @@ def test_build_lines_applies_highest_wholesale_tier() -> None:
     assert lines[0]["unit_price_snapshot"] == Decimal("7.25")
     assert lines[0]["pricing_tier_min_quantity"] == 10
     assert subtotal == Decimal("87.00")
+
+
+def _cart(*pairs):
+    return SimpleNamespace(
+        items=[SimpleNamespace(variant_id=v.id, variant=v, quantity=q) for v, q in pairs]
+    )
+
+
+def test_build_lines_full_price_without_tier_rows() -> None:
+    variant = _variant(tiers=((1, "10.00"),))
+
+    lines, subtotal = _service()._build_lines(_cart((variant, 10)))
+
+    assert lines[0]["unit_price_snapshot"] == Decimal("10.00")
+    assert lines[0]["pricing_tier_min_quantity"] is None
+    assert subtotal == Decimal("100.00")
+
+
+def test_build_lines_does_not_sum_quantities_across_variants() -> None:
+    first = _variant(tiers=((1, "10.00"), (10, "7.00")))
+    second = _variant(tiers=((1, "10.00"), (10, "7.00")))
+    second.product_id, second.product = first.product_id, first.product
+
+    lines, subtotal = _service()._build_lines(_cart((first, 5), (second, 5)))
+
+    assert [line["pricing_tier_min_quantity"] for line in lines] == [None, None]
+    assert subtotal == Decimal("100.00")
+
+
+def test_build_lines_tier_not_below_line_one_charges_line_one() -> None:
+    variant = _variant(tiers=((1, "6.00"), (10, "7.25")))
+
+    lines, _ = _service()._build_lines(_cart((variant, 10)))
+
+    assert lines[0]["unit_price_snapshot"] == Decimal("6.00")
+    assert lines[0]["pricing_tier_min_quantity"] is None
+
+
+@pytest.mark.parametrize("target", ["unconfirmed", "unpublished", "unlisted"])
+def test_build_lines_rejects_unavailable_variation(target: str) -> None:
+    variant = _variant()
+    if target == "unconfirmed":
+        variant.pricing_status = PricingStatus.PENDING
+    elif target == "unpublished":
+        variant.is_active = False
+    else:
+        variant.product.store_listed = False
+
+    with pytest.raises(ValueError, match="não está mais disponível"):
+        _service()._build_lines(_cart((variant, 1)))
 
 
 @pytest.mark.parametrize(

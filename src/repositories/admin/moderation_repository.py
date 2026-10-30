@@ -7,9 +7,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.catalog import Product, ProductQuestion, ProductReview
-from src.models.catalog_presentation import ProductSitePresentation
 from src.models.identity import User
-from src.repositories.admin._expressions import effective_name
 from src.schemas.admin.moderation import QuestionStatus, ReviewStatus
 
 
@@ -24,15 +22,12 @@ class ModerationRepository:
             return (
                 stmt.join(Product, Product.id == model.product_id)
                 .join(User, User.id == model.user_id)
-                .outerjoin(
-                    ProductSitePresentation, ProductSitePresentation.product_id == Product.id
-                )
                 .where(*where)
             )
 
         total = (await self.session.execute(joined(select(func.count(model.id))))).scalar_one()
         stmt = (
-            joined(select(model, effective_name(), User.full_name))
+            joined(select(model, Product.name, User.full_name))
             .order_by(model.created_at.desc(), model.id.desc())
             .offset(skip)
             .limit(limit)

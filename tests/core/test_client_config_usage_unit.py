@@ -39,6 +39,8 @@ CLIENT_FIELDS = {
     "BLING_TOKEN_ENCRYPTION_KEY",
     "BLING_STATE_SIGNING_KEY",
     "BLING_ORDER_STATUS_MAP",
+    "BLING_STORE_ID",
+    "bling_store_configured",
     "bling_configured",
 }
 

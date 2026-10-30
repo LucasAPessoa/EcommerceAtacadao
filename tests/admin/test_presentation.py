@@ -1,4 +1,4 @@
-"""US2: PATCH /admin/products/{id}/presentation e valores efetivos no catálogo público.
+"""PATCH /admin/products/{id}/presentation (só visible/featured) e catálogo público (Bling).
 
 A parte HTTP usa o Postgres semeado do ``scripts/run_api_tests.sh``. A última seção roda a
 importação do Bling (``tests/fakes/bling_fake.py``) num banco descartável e prova que a sync
@@ -30,9 +30,9 @@ from src.core import crypto
 from src.integrations.bling.catalog import BlingCatalogClient
 from src.integrations.bling.client import BlingClient, RateLimiter
 from src.models.base import Base
-from src.models.catalog import Category, Product
+from src.models.catalog import Product
 from src.models.catalog_presentation import ProductSitePresentation, product_site_categories
-from src.models.catalog_sync import CatalogSyncRun
+from src.models.catalog_sync import CatalogSyncRun, CatalogSyncState
 from src.models.enums import (
     BlingConnectionStatusEnum,
     CatalogSyncRunStatusEnum,
@@ -42,7 +42,6 @@ from src.models.identity import Role, User
 from src.models.integrations import BlingConnection
 from src.repositories.admin.presentation_repository import PresentationRepository
 from src.repositories.catalog.catalog_sync_repository import CatalogSyncRepository
-from src.repositories.catalog.product_repository import ProductRepository
 from src.schemas.admin.presentation import PresentationUpdate
 from src.services.admin.presentation_service import PresentationService
 from src.services.catalog.catalog_sync_service import OUTCOME_FINISHED, CatalogSyncService
@@ -75,58 +74,33 @@ async def _row(db: AsyncEngine, pid: uuid.UUID) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
-class TestLockAndUnlock:
-    @pytest.mark.parametrize("field", ["name", "description", "complementary_description"])
-    async def test_lock_then_unlock_text_field(
-        self,
-        client: httpx.AsyncClient,
-        admin_token: str,
-        seed: Seeder,
-        db: AsyncEngine,
-        field: str,
+class TestFlags:
+    async def test_set_visible_and_featured(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
     ) -> None:
         pid = await seed.product("Original")
-        bling_value = (await _public(client, pid))[field]
 
-        resp = await _patch(
-            client, admin_token, pid, {field: {"locked": True, "value": "  Personalizado  "}}
-        )
+        resp = await _patch(client, admin_token, pid, {"visible": False, "featured": True})
 
         assert resp.status_code == 200, resp.text
-        block = resp.json()["data"][field]
-        expected = "Personalizado" if field == "name" else "  Personalizado  "
-        assert block == {"bling": bling_value, "site": expected, "locked": True}
-        assert (await _public(client, pid))[field] == expected
-
-        resp = await _patch(client, admin_token, pid, {field: {"locked": False, "value": "x"}})
-
-        assert resp.json()["data"][field] == {"bling": bling_value, "site": None, "locked": False}
-        assert (await _public(client, pid))[field] == bling_value
+        data = resp.json()["data"]
+        assert data["visible"] is False and data["featured"] is True
+        assert set(data) == {"visible", "featured", "updated_at", "updated_by"}
+        assert data["updated_by"]["full_name"]
         row = await _row(db, pid)
-        assert row is not None and row[field] is None
+        assert row is not None and row["updated_by_user_id"] is not None
 
     async def test_only_sent_keys_change_and_row_is_never_deleted(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
     ) -> None:
         pid = await seed.product("Original")
-        await _patch(client, admin_token, pid, {"name": {"locked": True, "value": "Nome"}})
-        await _patch(
-            client, admin_token, pid, {"description": {"locked": True, "value": "<p>d</p>"}}
-        )
+        await _patch(client, admin_token, pid, {"featured": True})
 
-        resp = await _patch(client, admin_token, pid, {"name": {"locked": False}})
+        resp = await _patch(client, admin_token, pid, {"visible": False})
         data = resp.json()["data"]
 
-        assert data["name"]["locked"] is False
-        assert data["description"]["site"] == "<p>d</p>"
-        resp = await _patch(client, admin_token, pid, {"description": {"locked": False}})
-        data = resp.json()["data"]
-        assert data["visible"] is True and data["featured"] is False
-        assert data["updated_by"]["full_name"]
-        row = await _row(db, pid)
-        assert row is not None
-        assert row["updated_by_user_id"] is not None
-        assert row["name"] is None and row["description"] is None
+        assert data["visible"] is False and data["featured"] is True
+        assert await _row(db, pid) is not None
 
     async def test_empty_body_changes_nothing(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
@@ -138,140 +112,68 @@ class TestLockAndUnlock:
         assert resp.status_code == 200
         assert await _row(db, pid) is None
 
-    async def test_lock_and_unlock_categories(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
+    async def test_batch_accepts_only_flags(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
     ) -> None:
-        bling_cat = await seed.category("Bling")
-        site_a = await seed.category("SiteA")
-        site_b = await seed.category("SiteB", active=False)
-        pid = await seed.product("P", categories=(bling_cat,))
+        pid = await seed.product("Lote")
+        url = f"{ADMIN}/presentation"
+        headers = auth_headers(admin_token)
 
-        resp = await _patch(
-            client,
-            admin_token,
-            pid,
-            {"categories": {"locked": True, "category_ids": [str(site_a), str(site_b)]}},
+        ok = await client.patch(
+            url, json={"product_ids": [str(pid)], "featured": True}, headers=headers
+        )
+        bad = await client.patch(
+            url,
+            json={"product_ids": [str(pid)], "featured": True, "name": {"locked": False}},
+            headers=headers,
         )
 
-        assert resp.status_code == 200, resp.text
-        cats = resp.json()["data"]["categories"]
-        assert cats["locked"] is True
-        assert [c["id"] for c in cats["bling"]] == [str(bling_cat)]
-        assert {c["id"]: c["is_active"] for c in cats["site"]} == {
-            str(site_a): True,
-            str(site_b): False,
-        }
-        # Loja: só a categoria do site ativa.
-        public = await _public(client, pid)
-        assert [c["id"] for c in public["categories"]] == [str(site_a)]
+        assert ok.status_code == 200 and ok.json()["data"] == {"updated": 1}
+        assert bad.status_code == 422
 
-        resp = await _patch(
-            client, admin_token, pid, {"categories": {"locked": False, "category_ids": []}}
-        )
-
-        cats = resp.json()["data"]["categories"]
-        assert cats["locked"] is False and cats["site"] == []
-        assert [c["id"] for c in (await _public(client, pid))["categories"]] == [str(bling_cat)]
-        async with db.connect() as conn:
-            left = await conn.execute(
-                text("SELECT count(*) FROM product_site_categories WHERE product_id = :p"),
-                {"p": pid},
-            )
-            assert left.scalar_one() == 0
-        assert await _row(db, pid) is not None
-
-    async def test_deleted_site_category_leaves_the_store(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
+    @pytest.mark.parametrize("visible", ["talvez", None])
+    async def test_invalid_flag_is_422_or_noop(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, visible: Any
     ) -> None:
-        cat = await seed.category("Site")
         pid = await seed.product("P")
-        await _patch(
-            client, admin_token, pid, {"categories": {"locked": True, "category_ids": [str(cat)]}}
-        )
-        async with db.begin() as conn:
-            await conn.execute(
-                text("UPDATE categories SET deleted_at = now() WHERE id = :c"), {"c": cat}
-            )
 
-        assert (await _public(client, pid))["categories"] == []
+        resp = await _patch(client, admin_token, pid, {"visible": visible})
+
+        assert resp.status_code == (422 if visible == "talvez" else 200)
 
 
 class TestValidation:
     @pytest.mark.parametrize(
         "body",
         [
-            {"name": {"locked": True, "value": ""}},
-            {"name": {"locked": True, "value": "   "}},
-            {"name": {"locked": True}},
-            {"name": {"locked": True, "value": "a" * 256}},
-            {"description": {"locked": True, "value": " \n "}},
-            {"complementary_description": {"locked": True, "value": None}},
-            {"categories": {"locked": True, "category_ids": []}},
-            {
-                "categories": {
-                    "locked": True,
-                    "category_ids": [str(uuid.uuid4()) for _ in range(21)],
-                }
-            },
-            {"name": {"locked": True, "value": "ok", "extra": 1}},
-            {"visible": "talvez"},
+            {"name": {"locked": True, "value": "Nome"}},
+            {"description": {"locked": True, "value": "d"}},
+            {"complementary_description": {"locked": False}},
+            {"categories": {"locked": True, "category_ids": [str(uuid.uuid4())]}},
+            {"stock_quantity": 1},
+            {"weight_kg": 1},
+            {"bling_sku": "x"},
+            {"gtin": "1"},
+            {"base_price": 1},
+            {"code": "x"},
         ],
     )
-    async def test_invalid_payload_is_422(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, body: dict[str, Any]
+    async def test_removed_or_forbidden_fields_are_422_and_write_nothing(
+        self,
+        client: httpx.AsyncClient,
+        admin_token: str,
+        seed: Seeder,
+        db: AsyncEngine,
+        body: dict[str, Any],
     ) -> None:
         pid = await seed.product("P")
 
-        resp = await _patch(client, admin_token, pid, body)
+        resp = await _patch(client, admin_token, pid, {"visible": False, **body})
 
         assert resp.status_code == 422
-
-    async def test_name_of_255_chars_is_accepted(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
-    ) -> None:
-        pid = await seed.product("P")
-
-        resp = await _patch(
-            client, admin_token, pid, {"name": {"locked": True, "value": "n" * 255}}
-        )
-
-        assert resp.status_code == 200
-        assert (await _public(client, pid))["name"] == "n" * 255
-
-    @pytest.mark.parametrize(
-        "field", ["stock_quantity", "weight_kg", "bling_sku", "gtin", "base_price", "code"]
-    )
-    async def test_forbidden_field_is_422_and_names_the_field(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine, field: str
-    ) -> None:
-        pid = await seed.product("P")
-
-        resp = await _patch(client, admin_token, pid, {field: 1})
-
-        assert resp.status_code == 422
+        field = next(iter(body))
         assert any(field in err["loc"] for err in resp.json()["detail"])
         assert await _row(db, pid) is None
-
-    async def test_unknown_or_deleted_category_is_400_and_nothing_is_written(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder, db: AsyncEngine
-    ) -> None:
-        deleted = await seed.category("Gone", deleted=True)
-        pid = await seed.product("P")
-        for ids in ([uuid.uuid4()], [deleted]):
-            resp = await _patch(
-                client,
-                admin_token,
-                pid,
-                {
-                    "name": {"locked": True, "value": "Nao grava"},
-                    "categories": {"locked": True, "category_ids": [str(i) for i in ids]},
-                },
-            )
-
-            assert resp.status_code == 400, resp.text
-            assert str(ids[0]) in resp.json()["detail"]
-        assert await _row(db, pid) is None
-        assert (await _public(client, pid))["name"] == f"{seed.tag} P"
 
     async def test_unknown_or_deleted_product_is_404(
         self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
@@ -284,38 +186,42 @@ class TestValidation:
 
 
 class TestPublicCatalog:
-    async def test_effective_values_on_id_code_and_list(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    async def test_bling_values_on_id_code_and_list_ignore_old_overrides(
+        self, client: httpx.AsyncClient, seed: Seeder
     ) -> None:
         cat = await seed.category("C")
+        site_cat = await seed.category("Site")
         code = f"{seed.tag}-COD"
-        pid = await seed.product("Orig", code=code, categories=(cat,))
-        await _patch(
-            client,
-            admin_token,
-            pid,
-            {
-                "name": {"locked": True, "value": "Nome da Loja"},
-                "description": {"locked": True, "value": "<p>desc loja</p>"},
+        pid = await seed.product(
+            "Orig",
+            code=code,
+            categories=(cat,),
+            site_categories=(site_cat,),
+            presentation={
+                "name": "Nome da Loja",
+                "description": "<p>desc loja</p>",
+                "categories_locked": True,
             },
         )
 
         by_id = await _public(client, pid)
         by_code = (await client.get(f"{PUBLIC}/code/{code}")).json()["data"]
         listed = (await client.get(PUBLIC + "/", params={"category_id": str(cat)})).json()["data"]
+        by_site_cat = (await client.get(PUBLIC + "/", params={"category_id": str(site_cat)})).json()
 
         for item in (by_id, by_code, listed[0]):
-            assert item["name"] == "Nome da Loja"
-            assert item["description"] == "<p>desc loja</p>"
+            assert item["name"] == f"{seed.tag} Orig"
+            assert item["description"] == "desc bling"
             assert item["complementary_description"] is None
+            assert [c["id"] for c in item["categories"]] == [str(cat)]
         assert len(listed) == 1
+        assert by_site_cat["data"] == []
         assert set(by_id) >= {"id", "name", "categories", "variants", "main_image_url"}
 
-    async def test_category_filter_uses_effective_categories(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    async def test_category_filter_ignores_inactive_categories(
+        self, client: httpx.AsyncClient, seed: Seeder
     ) -> None:
         bling_cat = await seed.category("Bling")
-        site_cat = await seed.category("Site")
         inactive = await seed.category("Inativa", active=False)
         pid = await seed.product("P", categories=(bling_cat, inactive))
 
@@ -325,18 +231,7 @@ class TestPublicCatalog:
             return [p["id"] for p in resp.json()["data"]]
 
         assert await ids(bling_cat) == [str(pid)]
-        assert await ids(site_cat) == []
         assert await ids(inactive) == []
-
-        await _patch(
-            client,
-            admin_token,
-            pid,
-            {"categories": {"locked": True, "category_ids": [str(site_cat)]}},
-        )
-
-        assert await ids(site_cat) == [str(pid)]
-        assert await ids(bling_cat) == []
 
     async def test_invalid_category_id_is_422(self, client: httpx.AsyncClient) -> None:
         resp = await client.get(PUBLIC + "/", params={"category_id": "nao-uuid"})
@@ -437,6 +332,14 @@ def _bling_product(name: str, category: int, changed: Optional[str] = None) -> d
 
 async def _set_bling(fake: httpx.AsyncClient, product: dict[str, Any]) -> None:
     config = {
+        "store_links": [
+            {
+                "id": 1_029_000_001,
+                "preco": 25.9,
+                "produto": {"id": product["id"]},
+                "loja": {"id": 206_347_377},
+            }
+        ],
         "products": [product],
         "categories": [{"id": 1, "descricao": "Mercearia"}, {"id": 2, "descricao": "Padaria"}],
         "balances": {str(1 + BIG): 5},
@@ -454,7 +357,9 @@ async def _import(factory: async_sessionmaker[AsyncSession]) -> None:
                 max_retries=0,
                 base_url=_env("BLING_API_BASE_URL"),
             )
-            service = CatalogSyncService(CatalogSyncRepository(session), BlingCatalogClient(client))
+            service = CatalogSyncService(
+                CatalogSyncRepository(session), BlingCatalogClient(client), store_id=206_347_377
+            )
             result = await service.run_slice(CatalogSyncTriggerEnum.MANUAL)
         if result.outcome == OUTCOME_FINISHED:
             async with factory() as session:
@@ -485,81 +390,43 @@ async def _presentation_tables(factory: async_sessionmaker[AsyncSession]) -> tup
         return sorted(presentation, key=str), sorted(tuple(r) for r in links)
 
 
-async def _store(factory: async_sessionmaker[AsyncSession], pid: uuid.UUID) -> Any:
-    async with factory() as session:
-        return await ProductRepository(session).get_by_id(pid)
-
-
-async def test_sync_preserves_the_presentation_overlay(
+async def test_sync_preserves_the_presentation_flags(
     factory: async_sessionmaker[AsyncSession], fake: httpx.AsyncClient
 ) -> None:
     await _set_bling(fake, _bling_product("Arroz", category=1))
     await _import(factory)
     async with factory() as session:
-        product = (await session.execute(select(Product))).scalar_one()
-        pid = product.id
-        padaria = (
-            await session.execute(select(Category).where(Category.bling_id == 2))
-        ).scalar_one()
+        pid = (await session.execute(select(Product))).scalar_one().id
     async with factory.begin() as session:
         role = Role(name="admin")
         session.add(role)
         await session.flush()
         admin = User(role_id=role.id, email="adm@x.y", password_hash="x", full_name="Adm")
-        # Com bling_id, a sync não a trata como categoria legada (sem bling_id, a varredura a
-        # desativa e a loja a esconderia: risco registrado no report).
-        site_cat = Category(name="Vitrine do site", bling_id=987, is_active=True)
-        session.add_all([admin, site_cat])
+        session.add(admin)
         await session.flush()
-        admin_id, site_cat_id = admin.id, site_cat.id
+        admin_id = admin.id
 
     async with factory() as session:
         await PresentationService(session, PresentationRepository(session)).update(
-            pid,
-            PresentationUpdate.model_validate(
-                {
-                    "name": {"locked": True, "value": "Arroz da Loja"},
-                    "categories": {"locked": True, "category_ids": [str(site_cat_id)]},
-                    "featured": True,
-                }
-            ),
-            admin_id,
+            pid, PresentationUpdate.model_validate({"featured": True, "visible": False}), admin_id
         )
     before_tables = await _presentation_tables(factory)
-    assert before_tables[1] == [(pid, site_cat_id)]
-    store = await _store(factory, pid)
-    assert store.name == "Arroz da Loja"
-    assert [c.id for c in store.categories] == [site_cat_id]
 
-    # O Bling muda nome e categoria; a importação aplica no produto, não na apresentação.
+    # O Bling muda o nome; a importação aplica no produto, não na apresentação.
     await _set_bling(
         fake, _bling_product("Arroz Premium", category=2, changed=_sync_changed_stamp())
     )
+    async with factory.begin() as session:  # releitura completa: o vínculo não mudou
+        state = await session.get(CatalogSyncState, 1)
+        assert state is not None
+        state.last_full_detail_at = datetime.utcnow() - timedelta(days=2)
     await _import(factory)
 
     async with factory() as session:
         product = await session.get(Product, pid)
         assert product is not None and product.name == "Arroz Premium"
     assert await _presentation_tables(factory) == before_tables
-    store = await _store(factory, pid)
-    assert store.name == "Arroz da Loja"
-    assert [c.id for c in store.categories] == [site_cat_id]
-
-    # Destravar mostra o valor novo do Bling, na hora.
-    async with factory() as session:
-        await PresentationService(session, PresentationRepository(session)).update(
-            pid,
-            PresentationUpdate.model_validate(
-                {
-                    "name": {"locked": False},
-                    "categories": {"locked": False, "category_ids": []},
-                }
-            ),
-            admin_id,
-        )
-    store = await _store(factory, pid)
-    assert store.name == "Arroz Premium"
-    assert [c.id for c in store.categories] == [padaria.id]
+    assert before_tables[0][0][5:7] == (False, True)  # visible=False, featured=True
 
 
 def _sync_changed_stamp() -> str:

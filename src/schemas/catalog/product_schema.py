@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.schemas.base_schema import SoftDeleteMixinSchema
 from src.schemas.catalog.category_schema import CategoryResponseSchema
-from src.schemas.catalog.product_variant_schema import ProductVariantResponseSchema
+from src.schemas.catalog.product_variant_schema import ProductVariantPublicSchema
 
 
 class ProductBaseSchema(BaseModel):
@@ -34,7 +34,7 @@ class ProductBaseSchema(BaseModel):
 class ProductResponseSchema(ProductBaseSchema, SoftDeleteMixinSchema):
     id: UUID
     categories: List[CategoryResponseSchema]
-    variants: List[ProductVariantResponseSchema]
+    variants: List[ProductVariantPublicSchema]
     # Preenchido pelo repositório: imagem principal da 1ª variação ativa com imagem.
     main_image_url: Optional[str] = None
     # Uso interno da importação do Bling (marcas de sincronização): nunca na resposta pública.

@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Callable, Optional
 
@@ -264,3 +265,86 @@ async def test_idempotent_still_retried_on_5xx_and_read_timeout(method: str) -> 
     await h.client.request(method, "/x")
 
     assert len(h.requests) == 3
+
+
+# ------------------------------------------------------------------ vínculos produto-loja (008)
+
+STORE_LINK_RAW: dict[str, Any] = {
+    "id": 1029221462,
+    "codigo": "ARR-5",
+    "preco": 100,
+    "precoPromocional": 0,
+    "produto": {"id": 16621836105},
+    "loja": {"id": 206347377},
+    "fornecedorLoja": {"id": 0},
+    "marcaLoja": {"id": 0},
+    "categoriasProdutos": [],
+}
+
+
+async def test_list_store_links_page_sends_store_filter_and_normalizes() -> None:
+    from src.integrations.bling.catalog import BlingCatalogClient
+
+    h = Harness(_seq(httpx.Response(200, json={"data": [STORE_LINK_RAW]})))
+
+    links, has_more = await BlingCatalogClient(h.client).list_store_links_page(206347377, 3)
+
+    assert (links[0].id, links[0].product_id, links[0].store_id) == (
+        1029221462,
+        16621836105,
+        206347377,
+    )
+    assert str(links[0].price) == "100.00" and str(links[0].promo_price) == "0.00"
+    assert has_more is False
+    request = h.requests[0]
+    assert request.url.path.endswith("/produtos/lojas")
+    assert request.url.params["idLoja"] == "206347377" and request.url.params["pagina"] == "3"
+
+
+async def test_put_store_link_resends_read_body_changing_only_price() -> None:
+    """FR-013: o PUT reenvia o vínculo lido e só troca `preco`."""
+    from decimal import Decimal
+
+    from src.integrations.bling.catalog import BlingCatalogClient, store_link_body_with_price
+
+    h = Harness(
+        _seq(
+            httpx.Response(200, json={"data": STORE_LINK_RAW}),
+            httpx.Response(200, json={}),
+        )
+    )
+    catalog = BlingCatalogClient(h.client)
+
+    link = await catalog.get_store_link(1029221462)
+    await catalog.put_store_link(link.id, store_link_body_with_price(link, Decimal("27.90")))
+
+    sent = json.loads(h.requests[1].content)
+    assert h.requests[1].method == "PUT"
+    assert h.requests[1].url.path.endswith("/produtos/lojas/1029221462")
+    assert sent["preco"] == 27.9
+    assert {k: v for k, v in sent.items() if k != "preco"} == {
+        k: v for k, v in STORE_LINK_RAW.items() if k != "preco"
+    }
+    assert link.raw == STORE_LINK_RAW  # a leitura não foi alterada
+
+
+async def test_put_store_link_retries_but_create_does_not_retry_on_5xx() -> None:
+    from src.integrations.bling.catalog import BlingCatalogClient
+
+    put = Harness(_seq(httpx.Response(503), httpx.Response(200, json={})))
+    await BlingCatalogClient(put.client).put_store_link(1, {"preco": 1})
+    assert len(put.requests) == 2
+
+    post = Harness(_seq(httpx.Response(503), httpx.Response(200, json={"data": {"id": 9}})))
+    with pytest.raises(BlingUnavailableError):
+        await BlingCatalogClient(post.client).create_store_link({"preco": 1})
+    assert len(post.requests) == 1 and post.sleeps == []
+
+
+async def test_create_store_link_returns_id() -> None:
+    from src.integrations.bling.catalog import BlingCatalogClient
+
+    h = Harness(_seq(httpx.Response(201, json={"data": {"id": 77}})))
+
+    assert await BlingCatalogClient(h.client).create_store_link({"preco": 1}) == 77
+    assert h.requests[0].method == "POST"

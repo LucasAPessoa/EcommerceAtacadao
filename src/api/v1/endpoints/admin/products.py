@@ -26,7 +26,6 @@ from src.schemas.admin.products import (
 )
 from src.schemas.response_schema import BaseResponse, PageMeta
 from src.services.admin.presentation_service import (
-    PresentationCategoryNotFoundError,
     PresentationProductNotFoundError,
     PresentationService,
 )
@@ -43,6 +42,17 @@ class ProductSort(str, Enum):
     price = "price"
     stock = "stock"
     updated_at = "updated_at"
+
+
+class PricingFilter(str, Enum):
+    pending = "pending"
+    confirmed = "confirmed"
+
+
+class WarningFilter(str, Enum):
+    tier_not_below_unit = "tier_not_below_unit"
+    store_price_missing = "store_price_missing"
+    price_not_set = "price_not_set"
 
 
 class SortOrder(str, Enum):
@@ -70,7 +80,9 @@ async def list_products(
     featured: Optional[bool] = None,
     low_stock: Optional[bool] = None,
     pending: Optional[bool] = None,
-    customized: Optional[bool] = None,
+    pricing_status: Optional[PricingFilter] = None,
+    warning: Optional[WarningFilter] = None,
+    listed: Optional[bool] = None,
     sort: ProductSort = ProductSort.name,
     order: SortOrder = SortOrder.asc,
     page: PageParams = Depends(page_params),
@@ -84,7 +96,9 @@ async def list_products(
         featured=featured,
         low_stock=low_stock,
         pending=pending,
-        customized=customized,
+        pricing_status=pricing_status.value if pricing_status else None,
+        warning=warning.value if warning else None,
+        listed=listed,
         sort=sort.value,
         order=order.value,
     )
@@ -136,9 +150,4 @@ async def update_presentation(
         await service.update(product_id, payload, user.id)
     except PresentationProductNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Produto não encontrado.")
-    except PresentationCategoryNotFoundError as exc:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail=f"Categorias inexistentes ou excluídas: {_ids(exc.missing)}",
-        )
     return BaseResponse(data=(await products.get_product(product_id)).presentation)

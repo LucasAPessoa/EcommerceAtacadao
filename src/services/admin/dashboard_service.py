@@ -17,6 +17,9 @@ _TO_REASON = {
     INCOMPLETE_WEIGHT: PendingReason.INCOMPLETE_WEIGHT,
     INCOMPLETE_DIMENSIONS: PendingReason.INCOMPLETE_DIMENSIONS,
     INCOMPLETE_PRICE: PendingReason.INCOMPLETE_PRICE,
+    PendingReason.PRICE_NOT_SET.value: PendingReason.PRICE_NOT_SET,
+    PendingReason.STORE_PRICE_MISSING.value: PendingReason.STORE_PRICE_MISSING,
+    PendingReason.TIER_NOT_BELOW_UNIT.value: PendingReason.TIER_NOT_BELOW_UNIT,
 }
 _FROM_REASON = {v: k for k, v in _TO_REASON.items()}
 MAX_PERIOD_DAYS = 366
@@ -71,6 +74,9 @@ class DashboardService:
             low_stock_products=await self.repository.low_stock_products(),
             low_stock_threshold=self.repository.low_stock_threshold,
             bling_pending_products=await self.repository.pending_products(),
+            pricing_pending_products=await self.repository.pricing_pending_products(),
+            tier_warning_products=await self.repository.tier_warning_products(),
+            store_price_missing_products=await self.repository.store_price_missing_products(),
         )
 
     async def list_pending(

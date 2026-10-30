@@ -104,11 +104,17 @@ class ClientConfig(_Frozen):
     mercado_pago: MercadoPagoCredentials | None = None
     bling: BlingCredentials | None = None
     bling_order_status_map: dict[int, OrderStatusEnum] = {}
+    bling_store_id: int | None = None
     low_stock_threshold: int = DEFAULT_LOW_STOCK_THRESHOLD
 
     @property
     def bling_configured(self) -> bool:
         return self.bling is not None and bool(self.tenant_id) and bool(self.front_url)
+
+    @property
+    def bling_store_configured(self) -> bool:
+        """Loja do site (canal "API") do Bling informada: sem ela a sync de vínculos não roda."""
+        return self.bling_store_id is not None
 
     @property
     def mercado_pago_configured(self) -> bool:
@@ -382,6 +388,14 @@ def build_client_config(settings: Settings) -> ClientConfig:
     if raw_map:
         status_map = _parse_status_map(raw_map, errors)
 
+    bling_store_id: int | None = None
+    raw_store_id = text(s.BLING_STORE_ID)
+    if raw_store_id:
+        if raw_store_id.isascii() and raw_store_id.isdigit() and int(raw_store_id) > 0:
+            bling_store_id = int(raw_store_id)
+        else:
+            errors.append(("BLING_STORE_ID", "inteiro positivo (id da loja API no Bling)"))
+
     if errors:
         raise ClientConfigError(errors)
 
@@ -397,6 +411,7 @@ def build_client_config(settings: Settings) -> ClientConfig:
         mercado_pago=mercado_pago,
         bling=bling,
         bling_order_status_map=status_map,
+        bling_store_id=bling_store_id,
         low_stock_threshold=low_stock,
     )
 

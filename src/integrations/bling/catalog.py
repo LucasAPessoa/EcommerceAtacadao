@@ -1,4 +1,4 @@
-"""Leitura do catálogo do Bling: paginação, normalização e hash de conteúdo (spec 006).
+"""Leitura do catálogo do Bling: vínculos, detalhes, normalização e hash (specs 006 e 008).
 
 Todo formato do Bling (nomes de campos, estrutura de mídia, saldos) fica isolado aqui; o
 restante do sistema só conhece as dataclasses internas. Comportamento real observado em
@@ -9,11 +9,10 @@ Nunca registra token nem corpo de resposta.
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit
-from zoneinfo import ZoneInfo
 
 from src.integrations.bling.client import BlingClient
 from src.integrations.bling.errors import BlingError
@@ -23,20 +22,14 @@ BALANCE_BATCH_SIZE = 100  # tamanho do lote em /estoques/saldos (R1)
 
 CATEGORIES_PATH = "/categorias/produtos"
 PRODUCTS_PATH = "/produtos"
+STORE_LINKS_PATH = "/produtos/lojas"  # vínculos produto-loja (spec 008)
 BALANCES_PATH = "/estoques/saldos"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-_BLING_TZ = ZoneInfo("America/Sao_Paulo")
-
-
-def format_changed_since(value: datetime) -> str:
-    """UTC (naive ou aware) -> horário de São Paulo, o fuso em que o Bling lê o filtro."""
-    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
-    return aware.astimezone(_BLING_TZ).strftime(_DATE_FORMAT)
 
 
 INCOMPLETE_WEIGHT = "incompleto_peso"
 INCOMPLETE_DIMENSIONS = "incompleto_medidas"
-INCOMPLETE_PRICE = "incompleto_preco"  # preço vigente do site ausente ou <= 0
+INCOMPLETE_PRICE = "incompleto_preco"  # vínculo e preço geral do Bling com valor 0 (spec 008)
 
 
 class BlingCatalogFormatError(BlingError):
@@ -51,20 +44,6 @@ class BlingCategory:
     id: int
     name: str
     parent_id: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class BlingListItem:
-    """Item da varredura (`GET /produtos`). Variações (com `idProdutoPai`) são descartadas."""
-
-    id: int
-    active: bool
-
-
-@dataclass(frozen=True)
-class BlingProductPage:
-    items: tuple[BlingListItem, ...]
-    has_more: bool
 
 
 @dataclass(frozen=True)
@@ -112,6 +91,8 @@ class BlingProduct:
     variants: tuple[BlingVariant, ...]
     updated_at: Optional[datetime]
     content_hash: str
+    # Preenchido quando o detalhe é de uma variação (`variacao.produtoPai.id`); fora do hash.
+    parent_id: Optional[int] = None
 
     @property
     def sellable(self) -> bool:
@@ -122,6 +103,21 @@ class BlingProduct:
         """Motivos únicos de variações ativas bloqueadas (para o relatório de erros)."""
         reasons = [v.block_reason for v in self.variants if v.active and v.block_reason]
         return sorted(set(reasons))
+
+
+@dataclass(frozen=True)
+class BlingStoreLink:
+    """Vínculo de um produto (pai, simples ou variação) com uma loja do Bling (spec 008).
+
+    `price` 0 = preço da loja não preenchido. `raw` guarda o corpo lido, para reenviar no PUT.
+    """
+
+    id: int
+    product_id: int
+    store_id: Optional[int]
+    price: Decimal
+    promo_price: Decimal
+    raw: dict[str, Any]
 
 
 def available_stock(balance: int, pending: int) -> int:
@@ -290,7 +286,62 @@ def normalize_product(raw: dict[str, Any]) -> BlingProduct:
         variants=tuple(variants),
         updated_at=_datetime(raw.get("dataAlteracao")),
         content_hash=content_hash(product, variants),
+        parent_id=_parent_id(raw),
     )
+
+
+def _parent_id(raw: dict[str, Any]) -> Optional[int]:
+    detail = raw.get("variacao")
+    parent = detail.get("produtoPai") if isinstance(detail, dict) else None
+    return (_int(parent.get("id")) or None) if isinstance(parent, dict) else None
+
+
+def normalize_store_link(raw: dict[str, Any]) -> BlingStoreLink:
+    """Converte um item de `/produtos/lojas`; fora do formato levanta `BlingCatalogFormatError`."""
+    link_id = _int(raw.get("id"))
+    product = raw.get("produto")
+    product_id = _int(product.get("id") if isinstance(product, dict) else None)
+    if link_id is None or product_id is None:
+        raise BlingCatalogFormatError()
+    store = raw.get("loja")
+    return BlingStoreLink(
+        id=link_id,
+        product_id=product_id,
+        store_id=_int(store.get("id") if isinstance(store, dict) else None),
+        price=_decimal(raw.get("preco")),
+        promo_price=_decimal(raw.get("precoPromocional")),
+        raw=raw,
+    )
+
+
+def json_price(price: Decimal) -> float:
+    """Preço do corpo JSON: quantizado em 2 casas; o `float` resultante tem representação mais
+    curta idêntica ao decimal (27.90 -> 27.9), então o número enviado é exato."""
+    quantized = Decimal(price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    value = float(quantized)
+    if Decimal(repr(value)) != quantized:
+        raise ValueError("preço fora da precisão suportada")
+    return value
+
+
+def store_link_code(current: Any, sku: Optional[str]) -> Any:
+    """`codigo` do vínculo: o Bling recusa vazio ou "0" (erro 121, `idProdutoLoja`).
+
+    Mantém o código atual quando válido; senão usa o SKU da variação."""
+    if str(current or "").strip() in ("", "0") and sku:
+        return sku
+    return current
+
+
+def store_link_body_with_price(
+    link: BlingStoreLink, price: Decimal, sku: Optional[str] = None
+) -> dict[str, Any]:
+    """Corpo do PUT: o vínculo lido, trocando `preco` (FR-013) e, se vazio ou "0", `codigo`."""
+    return {
+        **link.raw,
+        "preco": json_price(price),
+        "codigo": store_link_code(link.raw.get("codigo"), sku),
+    }
 
 
 # Parâmetros de URL pré-assinada (S3 v2/v4) que mudam a cada leitura do Bling (R7).
@@ -374,27 +425,45 @@ class BlingCatalogClient:
                 categories.append(BlingCategory(category_id, name, _int(row.get("idCategoriaPai"))))
         return categories, len(rows) >= PAGE_SIZE
 
-    async def list_products_page(
-        self, page: int, *, changed_since: Optional[datetime] = None
-    ) -> BlingProductPage:
-        params: dict[str, Any] = {"pagina": page, "limite": PAGE_SIZE}
-        if changed_since is not None:
-            params["dataAlteracaoInicial"] = format_changed_since(changed_since)
-        rows = _rows(await self.client.request("GET", PRODUCTS_PATH, params=params))
-        items = []
-        for row in rows:
-            product_id = _int(row.get("id"))
-            if product_id is None or row.get("idProdutoPai"):
-                continue  # R1: variações listadas com idProdutoPai pertencem ao pai
-            items.append(BlingListItem(product_id, _is_active(row)))
-        return BlingProductPage(tuple(items), len(rows) >= PAGE_SIZE)
-
     async def get_product(self, bling_id: int) -> BlingProduct:
         body = await self.client.request("GET", f"{PRODUCTS_PATH}/{bling_id}")
         data = _data(body)
         if not isinstance(data, dict):
             raise BlingCatalogFormatError()
         return normalize_product(data)
+
+    async def list_store_links_page(
+        self, store_id: int, page: int
+    ) -> tuple[list[BlingStoreLink], bool]:
+        """Uma página de vínculos da loja (`GET /produtos/lojas?idLoja=`) e se há mais."""
+        rows = _rows(
+            await self.client.request(
+                "GET",
+                STORE_LINKS_PATH,
+                params={"idLoja": store_id, "pagina": page, "limite": PAGE_SIZE},
+            )
+        )
+        return [normalize_store_link(row) for row in rows], len(rows) >= PAGE_SIZE
+
+    async def get_store_link(self, link_id: int) -> BlingStoreLink:
+        body = await self.client.request("GET", f"{STORE_LINKS_PATH}/{link_id}")
+        data = _data(body)
+        if not isinstance(data, dict):
+            raise BlingCatalogFormatError()
+        return normalize_store_link(data)
+
+    async def put_store_link(self, link_id: int, body: dict[str, Any]) -> None:
+        """Substitui o vínculo (idempotente: o cliente repete em 429/5xx)."""
+        await self.client.request("PUT", f"{STORE_LINKS_PATH}/{link_id}", json=body)
+
+    async def create_store_link(self, body: dict[str, Any]) -> int:
+        """Cria o vínculo e devolve o id. POST: sem retry em 5xx/timeout (pode ter sido criado);
+        quem chamar deve reler (`list_store_links_page`) antes de repetir."""
+        data = _data(await self.client.request("POST", STORE_LINKS_PATH, json=body))
+        link_id = _int(data.get("id") if isinstance(data, dict) else None)
+        if link_id is None:
+            raise BlingCatalogFormatError()
+        return link_id
 
     async def get_balances(self, bling_ids: list[int]) -> dict[int, int]:
         """Saldos de até `BALANCE_BATCH_SIZE` ids; ids sem saldo na resposta ficam de fora."""

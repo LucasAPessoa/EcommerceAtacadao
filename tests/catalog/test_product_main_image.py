@@ -41,8 +41,8 @@ async def make_product(db: AsyncEngine) -> AsyncIterator[Any]:
         async with db.begin() as conn:
             await conn.execute(
                 text(
-                    "INSERT INTO products (id, name, code, is_active, created_at, updated_at)"
-                    " VALUES (:id, 'Produto imagem', :code, true, :t, :t)"
+                    "INSERT INTO products (id, name, code, is_active, store_listed, created_at,"
+                    " updated_at) VALUES (:id, 'Produto imagem', :code, true, true, :t, :t)"
                 ),
                 {"id": pid, "code": code, "t": base},
             )
@@ -52,10 +52,17 @@ async def make_product(db: AsyncEngine) -> AsyncIterator[Any]:
                 await conn.execute(
                     text(
                         "INSERT INTO product_variants (id, product_id, bling_sku, variation_name,"
-                        " base_price, stock_quantity, is_active, created_at, updated_at)"
-                        " VALUES (:id, :p, :sku, 'v', 10, 1, :a, :t, :t)"
+                        " base_price, stock_quantity, is_active, pricing_status, created_at,"
+                        " updated_at) VALUES (:id, :p, :sku, 'v', 10, 1, :a, 'CONFIRMED', :t, :t)"
                     ),
                     {"id": vid, "p": pid, "sku": f"{code}-{n}", "a": active, "t": t},
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO pricing_tiers (id, variant_id, min_quantity, unit_price,"
+                        " created_at, updated_at) VALUES (:id, :v, 1, 10, :t, :t)"
+                    ),
+                    {"id": uuid.uuid4(), "v": vid, "t": t},
                 )
                 for k, (url, main) in enumerate(imgs):
                     await conn.execute(
@@ -80,6 +87,13 @@ async def make_product(db: AsyncEngine) -> AsyncIterator[Any]:
             await conn.execute(
                 text(
                     "DELETE FROM product_images WHERE variant_id IN"
+                    " (SELECT id FROM product_variants WHERE product_id = :p)"
+                ),
+                {"p": pid},
+            )
+            await conn.execute(
+                text(
+                    "DELETE FROM pricing_tiers WHERE variant_id IN"
                     " (SELECT id FROM product_variants WHERE product_id = :p)"
                 ),
                 {"p": pid},
