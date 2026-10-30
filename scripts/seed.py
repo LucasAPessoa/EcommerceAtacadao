@@ -29,7 +29,7 @@ import argparse
 import asyncio
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -57,6 +57,8 @@ from src.models.enums import (
     DiscountTypeEnum,
     OrderStatusEnum,
     PaymentMethodEnum,
+    PriceSource,
+    PricingStatus,
     ReconciliationOutcomeEnum,
     ReconciliationReasonEnum,
     ReconciliationStatusEnum,
@@ -421,6 +423,7 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
                         f"{name} de qualidade, ideal pra revenda ou consumo em grande volume."
                     ),
                     is_active=True,
+                    store_listed=True,
                     brand=brand,
                     unit=unit,
                     product_type="P",
@@ -452,6 +455,10 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
                         base_price=price,
                         stock_quantity=stock,
                         is_active=True,
+                        store_price=price,
+                        price_source=PriceSource.VARIANT_LINK,
+                        pricing_status=PricingStatus.CONFIRMED,
+                        pricing_confirmed_at=datetime.now(UTC).replace(tzinfo=None),
                         weight_kg=weight,
                         height_cm=height,
                         width_cm=width,
@@ -459,6 +466,13 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
                     ),
                 )
                 variants_by_code[sku] = variant
+                await get_or_create(
+                    session,
+                    PricingTier,
+                    variant_id=variant.id,
+                    min_quantity=1,
+                    defaults=dict(unit_price=price),
+                )
 
                 # Não condicionar as imagens à criação da variação: uma
                 # interrupção entre os dois passos deve poder ser recuperada
@@ -518,27 +532,27 @@ async def seed(create_tables: bool, reset_master_password: bool = False) -> None
             ),
         )
 
-        # --- Faixas de preço (compra em quantidade) ---
-        arroz_5kg = variants_by_code["ARZ-T1-5KG"].product_id
-        cafe = variants_by_code["CAFE-500-UN"].product_id
+        # --- Faixas de preço por variação (a linha de 1 unidade já foi criada acima) ---
+        arroz_5kg = variants_by_code["ARZ-T1-5KG"].id
+        cafe = variants_by_code["CAFE-500-UN"].id
         await get_or_create(
             session,
             PricingTier,
-            product_id=arroz_5kg,
+            variant_id=arroz_5kg,
             min_quantity=10,
             defaults=dict(unit_price=Decimal("25.90")),
         )
         await get_or_create(
             session,
             PricingTier,
-            product_id=arroz_5kg,
+            variant_id=arroz_5kg,
             min_quantity=30,
             defaults=dict(unit_price=Decimal("23.90")),
         )
         await get_or_create(
             session,
             PricingTier,
-            product_id=cafe,
+            variant_id=cafe,
             min_quantity=20,
             defaults=dict(unit_price=Decimal("14.90")),
         )

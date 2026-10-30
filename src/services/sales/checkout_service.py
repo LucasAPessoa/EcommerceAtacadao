@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -23,7 +22,7 @@ from src.schemas.sales.checkout_schema import (
 )
 from src.schemas.sales.order_schema import OrderResponseSchema
 from src.services.operations.shipping_service import ShippingService
-from src.services.sales.pricing import select_unit_price
+from src.services.sales.pricing import is_variant_purchasable, select_unit_price
 from src.services.sales.stock import ensure_stock
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -90,9 +89,9 @@ class CheckoutService:
 
     @staticmethod
     def _select_unit_price(
-        variant: ProductVariant, product_quantity: int
+        variant: ProductVariant, variant_quantity: int
     ) -> Tuple[Decimal, Optional[int]]:
-        unit_price, tier_quantity = select_unit_price(variant, product_quantity)
+        unit_price, tier_quantity = select_unit_price(variant, variant_quantity)
         return _money(unit_price), tier_quantity
 
     def _build_lines(
@@ -100,29 +99,20 @@ class CheckoutService:
         cart: Cart,
         variants_by_id: Optional[Dict[UUID, ProductVariant]] = None,
     ) -> Tuple[List[Dict[str, Any]], Decimal]:
-        quantities_by_product: Dict[UUID, int] = defaultdict(int)
-        for item in cart.items:
-            variant = variants_by_id.get(item.variant_id) if variants_by_id else item.variant
-            if variant is None:
-                raise ValueError(f"Variação {item.variant_id} não encontrada.")
-            quantities_by_product[variant.product_id] += item.quantity
-
         lines: List[Dict[str, Any]] = []
         subtotal = Decimal("0.00")
         for item in cart.items:
             variant = variants_by_id.get(item.variant_id) if variants_by_id else item.variant
             if (
                 variant is None
-                or not variant.is_active
+                or not is_variant_purchasable(variant)
                 or not variant.product.is_active
                 or getattr(variant, "deleted_at", None) is not None
                 or getattr(variant.product, "deleted_at", None) is not None
             ):
                 raise ValueError("Um dos produtos do carrinho não está mais disponível.")
 
-            unit_price, tier_quantity = self._select_unit_price(
-                variant, quantities_by_product[variant.product_id]
-            )
+            unit_price, tier_quantity = self._select_unit_price(variant, item.quantity)
             line_subtotal = _money(unit_price * item.quantity)
             subtotal += line_subtotal
             lines.append(

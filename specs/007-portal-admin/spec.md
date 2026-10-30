@@ -6,6 +6,8 @@
 
 **Status**: Implementada (escopo fechado em 2026-10-26)
 
+> **Atualização 2026-10-28 (spec 008, back #128):** a camada de apresentação fica só com visibilidade e destaque; nome, descrição e categorias vêm do Bling. Preço do site e faixas passam à tabela de preços por variação. Ver `specs/008-anuncios-bling/`.
+
 **Input**: User description: "Substituir o admin atual do front (tela única com CRUD por JSON cru) por um portal com Dashboard, Produtos, Pedidos e Bling. Produtos com busca, filtros, paginação com total, detalhe somente leitura do que vem do Bling, preço do site e faixas, e camada de apresentação do site por produto com override por campo (nome, descrições, categorias) que a sync do Bling nunca sobrescreve, mais visibilidade e destaque. Pedidos com filtros e ações existentes. Dashboard calculado no servidor. Bling com acompanhamento da importação e pendências. Só administradores."
 
 **Issues**: front #32 (painel administrativo independente; esta spec a implementa, com sessão própria em vez de compartilhada). PRs: back #106–#109, front #52, #54 e #60. Relacionadas: spec 003 (catálogo somente leitura), spec 006 (importação do catálogo), constituição v1.1.0 (princípio I, camada de apresentação).

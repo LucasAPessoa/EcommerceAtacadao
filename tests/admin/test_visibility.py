@@ -205,26 +205,3 @@ class TestHiddenIsStillForSale:
             assert str(subtotal) == "10.00"
         finally:
             await client.delete(f"{API_V1_PREFIX}/sales/cart/", headers=headers)
-
-
-class TestPricingTierConstraint:
-    async def test_duplicate_tier_is_a_readable_4xx_not_500(
-        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
-    ) -> None:
-        pid = await seed.product("P")
-        body = {"product_id": str(pid), "min_quantity": 5, "unit_price": "9.00"}
-        headers = auth_headers(admin_token)
-
-        first = await client.post(
-            f"{API_V1_PREFIX}/catalog/pricing-tiers/", json=body, headers=headers
-        )
-        second = await client.post(
-            f"{API_V1_PREFIX}/catalog/pricing-tiers/", json=body, headers=headers
-        )
-
-        assert first.status_code == 201, first.text
-        assert 400 <= second.status_code < 500
-        payload = second.json()
-        message = payload.get("message") or payload.get("detail")
-        assert isinstance(message, str) and message
-        assert "uq_pricing" not in second.text and "constraint" not in second.text.lower()

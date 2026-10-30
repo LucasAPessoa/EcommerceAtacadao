@@ -22,6 +22,9 @@ class DashboardSummary(BaseModel):
     low_stock_products: int
     low_stock_threshold: int
     bling_pending_products: int
+    pricing_pending_products: int
+    tier_warning_products: int
+    store_price_missing_products: int
 
 
 class BlingPendingItem(BaseModel):

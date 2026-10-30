@@ -9,7 +9,7 @@ from sqlalchemy import exists, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models.catalog import Product, ProductVariant
+from src.models.catalog import ProductVariant
 from src.models.enums import (
     DiscountTypeEnum,
     OrderStatusEnum,
@@ -177,8 +177,10 @@ class OrderRepository:
             .options(
                 selectinload(Cart.items)
                 .selectinload(CartItem.variant)
-                .selectinload(ProductVariant.product)
-                .selectinload(Product.pricing_tiers)
+                .options(
+                    selectinload(ProductVariant.product),
+                    selectinload(ProductVariant.pricing_tiers),
+                )
             )
             .where(Cart.user_id == user_id)
         )
@@ -191,8 +193,10 @@ class OrderRepository:
             .options(
                 selectinload(Cart.items)
                 .selectinload(CartItem.variant)
-                .selectinload(ProductVariant.product)
-                .selectinload(Product.pricing_tiers)
+                .options(
+                    selectinload(ProductVariant.product),
+                    selectinload(ProductVariant.pricing_tiers),
+                )
             )
             .where(Cart.user_id == user_id)
             .with_for_update()
@@ -204,7 +208,10 @@ class OrderRepository:
         """Bloqueia SKUs em ordem estável para evitar overselling e deadlocks."""
         query = (
             select(ProductVariant)
-            .options(selectinload(ProductVariant.product).selectinload(Product.pricing_tiers))
+            .options(
+                selectinload(ProductVariant.product),
+                selectinload(ProductVariant.pricing_tiers),
+            )
             .where(
                 ProductVariant.id.in_(sorted(variant_ids, key=str)),
                 ProductVariant.deleted_at.is_(None),

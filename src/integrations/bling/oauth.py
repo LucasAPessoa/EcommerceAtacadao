@@ -63,7 +63,13 @@ def parse_error_details(response: httpx.Response) -> tuple[str | None, str]:
         return None, ""
     err = body.get("error")
     if isinstance(err, dict):
-        return str(err.get("type") or "")[:80] or None, str(err.get("message") or "")[:200]
+        message = str(err.get("message") or "")[:200]
+        fields = err.get("fields")
+        if isinstance(fields, list):
+            msgs = [str(f["msg"])[:120] for f in fields if isinstance(f, dict) and f.get("msg")]
+            if msgs:
+                message = f"{message}: {'; '.join(msgs[:5])}" if message else "; ".join(msgs[:5])
+        return str(err.get("type") or "")[:80] or None, message
     if isinstance(err, str):
         return err[:80], str(body.get("error_description") or "")[:200]
     return None, ""

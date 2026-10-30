@@ -52,6 +52,7 @@ trap cleanup EXIT
 
 # Bling simulado (nunca o Bling real) + variáveis fictícias da integração.
 export TENANT_ID="test-tenant" FRONT_URL="https://front.test"
+export BLING_STORE_ID="206347377"
 export BLING_CLIENT_ID="test-client-id" BLING_CLIENT_SECRET="test-client-secret"
 export BLING_STATE_SIGNING_KEY="test-state-signing-key-not-secret"
 BLING_TOKEN_ENCRYPTION_KEY="$(python3 -c 'import base64; print(base64.urlsafe_b64encode(b"0123456789abcdef0123456789abcdef").decode())')"
@@ -83,11 +84,11 @@ curl -fsS "$BLING_FAKE_URL/health" >/dev/null || { echo "timeout aguardando o Bl
 
 "${RUN[@]}" pytest -q \
   tests/admin/test_auth.py tests/admin/test_bling_pending.py tests/admin/test_dashboard.py tests/admin/test_expressions.py tests/admin/test_moderation.py tests/admin/test_orders.py \
-  tests/admin/test_presentation.py tests/admin/test_products.py tests/admin/test_store_theme.py tests/admin/test_visibility.py \
+  tests/admin/test_presentation.py tests/admin/test_pricing_routes.py tests/admin/test_pricing_surface.py tests/admin/test_products.py tests/admin/test_store_theme.py tests/admin/test_visibility.py \
   tests/catalog/test_catalog.py tests/catalog/test_product_filters.py \
   tests/catalog/test_product_main_image.py \
   tests/integrations/test_bling_catalog_sync.py tests/integrations/test_bling_catalog_sync_api.py \
-  tests/integrations/test_bling_connection.py \
+  tests/integrations/test_bling_connection.py tests/integrations/test_store_pricing.py \
   tests/identity/test_addresses.py tests/identity/test_auth.py tests/identity/test_users.py \
   tests/operations/test_shipping.py \
   tests/sales/test_cart.py tests/sales/test_checkout.py tests/sales/test_orders.py \

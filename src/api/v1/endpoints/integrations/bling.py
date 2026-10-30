@@ -18,7 +18,11 @@ from src.schemas.integrations.catalog_sync_schema import (
     CatalogSyncRunsResponse,
 )
 from src.schemas.response_schema import BaseResponse
-from src.services.catalog.catalog_sync_service import CatalogSyncService, build_catalog_client
+from src.services.catalog.catalog_sync_service import (
+    REASON_STORE_NOT_CONFIGURED,
+    CatalogSyncService,
+    build_catalog_client,
+)
 from src.services.integrations.bling_connection_service import (
     BlingAlreadyConnectedError,
     BlingAlreadyDisconnectedError,
@@ -114,7 +118,12 @@ async def start_catalog_sync(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED_DETAIL)
     result = await service.run_job(CatalogSyncTriggerEnum.MANUAL, current_user.id, force=True)
     if result.status == "SKIPPED":
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="Conexão com o Bling inativa")
+        detail = (
+            "Loja do site no Bling não configurada (BLING_STORE_ID)"
+            if result.reason == REASON_STORE_NOT_CONFIGURED
+            else "Conexão com o Bling inativa"
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=detail)
     data = await service.get_run_schema(result.run_id) if result.run_id else None
     if data is None:  # outra invocação detém o estado: devolve o ciclo corrente
         data = (await service.list_runs(1)).current

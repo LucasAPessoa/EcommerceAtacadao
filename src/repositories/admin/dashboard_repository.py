@@ -7,7 +7,6 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.catalog import Product, ProductVariant
-from src.models.catalog_presentation import ProductSitePresentation
 from src.models.enums import OrderStatusEnum
 from src.models.sales import Order
 from src.repositories.admin import _expressions as ex
@@ -74,13 +73,26 @@ class DashboardRepository:
         return int((await self.session.execute(ex.with_aggregates(stmt, agg))).scalar_one())
 
     async def pending_products(self) -> int:
+        return await self._count_products("pending_count")
+
+    async def _count_products(self, column: str) -> int:
         agg = ex.variant_aggregates()
         stmt = (
             select(func.count())
             .select_from(Product)
-            .where(Product.deleted_at.is_(None), ex.pending_count_of(agg) > 0)
+            .where(Product.deleted_at.is_(None), ex.count_of(agg, column) > 0)
         )
         return int((await self.session.execute(ex.with_aggregates(stmt, agg))).scalar_one())
+
+    async def pricing_pending_products(self) -> int:
+        """Produtos com alguma variação publicada com preço pendente."""
+        return await self._count_products("pricing_pending")
+
+    async def tier_warning_products(self) -> int:
+        return await self._count_products("tier_warning")
+
+    async def store_price_missing_products(self) -> int:
+        return await self._count_products("store_price_missing")
 
     async def list_pending(
         self, reason: Optional[str], skip: int, limit: int
@@ -89,14 +101,13 @@ class DashboardRepository:
         base = (
             select(
                 Product.id,
-                ex.effective_name().label("name"),
+                Product.name.label("name"),
                 ProductVariant.id.label("variant_id"),
                 ProductVariant.bling_sku,
                 reason_expr.label("reason"),
             )
             .select_from(ProductVariant)
             .join(Product, Product.id == ProductVariant.product_id)
-            .outerjoin(ProductSitePresentation, ProductSitePresentation.product_id == Product.id)
             .where(reason_expr.is_not(None))
         )
         if reason is not None:
@@ -108,7 +119,7 @@ class DashboardRepository:
         )
         rows = (
             await self.session.execute(
-                base.order_by(ex.effective_name(), ProductVariant.bling_sku, ProductVariant.id)
+                base.order_by(Product.name, ProductVariant.bling_sku, ProductVariant.id)
                 .offset(skip)
                 .limit(limit)
             )
