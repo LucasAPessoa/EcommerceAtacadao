@@ -13,6 +13,7 @@ from src.schemas.admin.products import (
     PriceSourceValue,
     PricingStatusValue,
     PricingWarning,
+    StoreLinkValue,
 )
 
 
@@ -38,6 +39,7 @@ class AdminVariantPricing(BaseModel):
     is_active: bool
     published: bool
     price_source: Optional[PriceSourceValue] = None
+    store_link: StoreLinkValue = StoreLinkValue.NONE
     store_price: Optional[Money] = None
     pricing_status: PricingStatusValue
     pricing_confirmed_at: Optional[datetime] = None

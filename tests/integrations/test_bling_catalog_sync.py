@@ -564,6 +564,41 @@ async def test_removed_link_unlists_product_keeps_tables_and_can_return(
     assert (await _tiers(factory))[2] == [(1, Decimal("25.90")), (10, Decimal("20.00"))]
 
 
+async def test_link_missing_from_listing_but_existing_keeps_product_listed(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    """Vínculo que o site acabou de criar pode demorar a aparecer na listagem do Bling: a sync
+    confere por GET antes de despublicar (FR-009)."""
+    await _imported(factory, fake, _product(1), _product(2, "Feijão"))
+    both = [_product(1), _product(2, "Feijão")]
+    await _bling(fake, both, {1: 5, 2: 5})
+    hidden = _link(2, 25.9)["id"]
+    assert (
+        await fake.post("/__control/config", json={"hidden_store_links": [hidden]})
+    ).status_code == 200
+    run = await _cycle(factory)
+    assert run.status == CatalogSyncRunStatusEnum.SUCCESS and run.deactivated == 0
+    products = await _products(factory)
+    assert products[2].is_active is True and products[2].store_listed is True
+    assert products[2].bling_store_link_id == hidden
+
+
+async def test_link_check_failure_keeps_catalog_intact(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _imported(factory, fake, _product(1), _product(2, "Feijão"))
+    both = [_product(1), _product(2, "Feijão")]
+    hidden = _link(2, 25.9)["id"]
+    await _bling(fake, both, {1: 5, 2: 5}, failures={f"lojas:get:{hidden}": 503})
+    assert (
+        await fake.post("/__control/config", json={"hidden_store_links": [hidden]})
+    ).status_code == 200
+    run = await _cycle(factory)
+    assert run.deactivated == 0
+    products = await _products(factory)
+    assert products[2].is_active is True and products[2].store_listed is True
+
+
 async def test_removed_variation_is_deactivated_others_stay_for_sale(
     factory: Factory, fake: httpx.AsyncClient
 ) -> None:

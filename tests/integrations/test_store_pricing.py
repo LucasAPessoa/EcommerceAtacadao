@@ -660,3 +660,57 @@ async def test_simple_product_without_link_creates_product_link(
     async with factory() as session:
         product = (await session.execute(select(Product))).scalar_one()
         assert product.bling_store_link_id is not None
+
+
+async def test_unlinked_variant_creates_own_link_without_touching_parent(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    """Variação "none" (nem ela nem o pai vinculados): salvar cria o vínculo dela e a publica
+    na próxima sync; o produto continua sem vínculo."""
+    await _setup_bling(fake, [])
+    product_id, variant_id = await _seed(factory, own_link=False, published=False)
+    await _unlink(factory, complete=True)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    calls = await _calls(fake)
+    assert [(c["method"], c["path"]) for c in calls] == [("POST", "/produtos/lojas")]
+    assert calls[0]["body"]["produto"] == {"id": VARIANT_BLING_ID}
+    assert calls[0]["body"]["loja"] == {"id": STORE_ID}
+    variant = await _variant(factory, variant_id)
+    assert variant.bling_store_link_id is not None
+    assert variant.price_source == PriceSource.VARIANT_LINK
+    # publicada na hora (decisão de 01/11), com o preço confirmado
+    assert variant.is_active is True and variant.pricing_status == PricingStatus.CONFIRMED
+    async with factory() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        assert product.bling_store_link_id is None
+        assert product.store_listed is True and product.is_active is True
+
+
+async def _unlink(factory: Factory, *, complete: bool) -> None:
+    """Produto ativo no Bling, sem vínculo nenhum e fora da loja (variação "none")."""
+    async with factory.begin() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        product.bling_store_link_id = None
+        product.store_listed = False
+        product.is_active = False
+        product.status = "A"
+        variant = (await session.execute(select(ProductVariant))).scalar_one()
+        variant.weight_kg = 5.0 if complete else None
+        variant.height_cm = variant.width_cm = variant.length_cm = 10.0
+
+
+async def test_unlinked_variant_with_incomplete_data_is_linked_but_not_published(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    """Sem peso (R8) a sync também não publicaria: fica vinculada, fora da loja."""
+    await _setup_bling(fake, [])
+    product_id, variant_id = await _seed(factory, own_link=False, published=False)
+    await _unlink(factory, complete=False)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    variant = await _variant(factory, variant_id)
+    assert variant.bling_store_link_id is not None and variant.is_active is False
+    async with factory() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        assert product.store_listed is False
