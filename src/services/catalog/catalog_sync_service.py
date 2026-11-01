@@ -39,6 +39,7 @@ from src.integrations.bling.errors import (
     BlingError,
     BlingNotConnectedError,
     BlingReconnectRequiredError,
+    BlingRejectedError,
 )
 from src.models.catalog import PricingTier, Product, ProductImage, ProductVariant
 from src.models.catalog_sync import CatalogSyncRun, CatalogSyncState
@@ -530,10 +531,40 @@ class CatalogSyncService:
                 self._set_cursor(page=page + 1)
                 await self._checkpoint()
                 continue
+            if not await self._confirm_missing_links(links, store_id):
+                self._finish_scan(complete=False)
+                return True
+            self._set_cursor(links=links)
             await self._plan_details(links)
             self._finish_scan(complete=True)
             await self._checkpoint()
             return True
+
+    async def _confirm_missing_links(self, links: dict[str, Any], store_id: int) -> bool:
+        """Vínculo gravado no site que a listagem não trouxe: confere por GET antes de tirar da
+        loja. A listagem do Bling pode atrasar logo após o site criar o vínculo (FR-009).
+
+        Existe e é desta loja/produto: entra no mapa. 404: foi removido, segue a regra normal.
+        Outra falha: mapa incompleto (devolve False), como na leitura da listagem."""
+        stored = await self.repository.stored_store_links()
+        for bling_id, link_id in stored.items():
+            if str(bling_id) in links:
+                continue
+            try:
+                link = await self.catalog.get_store_link(link_id)
+            except BlingRejectedError as exc:
+                if exc.status == 404:
+                    continue
+                self._read_error("vinculos", exc)
+                return False
+            except BlingError as exc:
+                self._abort_if_unusable(exc)
+                self._read_error("vinculos", exc)
+                return False
+            if link.product_id == bling_id and link.store_id in (None, store_id):
+                logger.info("catalog_sync_link_confirmed bling_id=%s link=%s", bling_id, link_id)
+                links[str(bling_id)] = [link.id, str(link.price)]
+        return True
 
     def _finish_scan(self, *, complete: bool) -> None:
         self.state.scan_complete = complete

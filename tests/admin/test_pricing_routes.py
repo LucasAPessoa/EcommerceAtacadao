@@ -348,3 +348,67 @@ class TestPricingSettings:
         assert (
             await client.put(SETTINGS, json={"auto_confirm": True}, headers=user)
         ).status_code == 403
+
+
+class TestPublishOnSave:
+    """FR-009 (decisão de 01/11): variação sem vínculo nenhum é publicada na hora do save."""
+
+    async def _seed_unlinked(self, db: AsyncEngine) -> tuple[uuid.UUID, uuid.UUID]:
+        maker = async_sessionmaker(db, expire_on_commit=False)
+        async with maker.begin() as session:
+            product = Product(
+                name="Arroz sem vinculo",
+                bling_id=PRODUCT_BLING_ID,
+                status="A",
+                is_active=False,
+                store_listed=False,
+            )
+            session.add(product)
+            await session.flush()
+            variant = ProductVariant(
+                product_id=product.id,
+                bling_id=VARIANT_BLING_ID,
+                bling_sku="PRC-ROUTE-1",
+                variation_name="Pacote 5kg",
+                base_price=Decimal("0.00"),
+                stock_quantity=5,
+                is_active=False,
+                weight_kg=5.0,
+                height_cm=10.0,
+                width_cm=20.0,
+                length_cm=30.0,
+                pricing_status=PricingStatus.PENDING,
+            )
+            session.add(variant)
+            await session.flush()
+            return product.id, variant.id
+
+    async def test_unlinked_variant_is_public_right_after_save(
+        self, client: httpx.AsyncClient, admin_token: str, fake: httpx.AsyncClient, db: AsyncEngine
+    ) -> None:
+        assert (await fake.post("/__control/config", json={"store_links": []})).status_code == 200
+        product_id, variant_id = await self._seed_unlinked(db)
+        public = f"{API_V1_PREFIX}/catalog/products/{product_id}"
+        assert (await client.get(public)).status_code == 404
+
+        resp = await client.put(
+            _url(product_id, variant_id),
+            json={"unit_price": "12.50", "tiers": []},
+            headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data["store_link"] == "own" and data["published"] is True
+        assert data["pricing_status"] == "confirmed" and data["store_price"] == "12.50"
+        posts = [
+            c
+            for c in (await fake.get("/__control/calls")).json()
+            if c["method"] == "POST" and c.get("path") == "/produtos/lojas"
+        ]
+        assert [c["body"]["produto"] for c in posts] == [{"id": VARIANT_BLING_ID}]
+
+        shown = await client.get(public)
+        assert shown.status_code == 200, shown.text
+        variants = shown.json()["data"]["variants"]
+        assert [v["id"] for v in variants] == [str(variant_id)]
+        assert variants[0]["unit_price"] == "12.50"

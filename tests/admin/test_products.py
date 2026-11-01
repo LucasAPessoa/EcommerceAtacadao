@@ -245,6 +245,31 @@ class TestPricingFiltersAndWarnings:
         fora = (await client.get(f"{URL}/{unlisted}", headers=auth_headers(admin_token))).json()
         assert fora["data"]["variants"][0]["published"] is False  # produto não listado
 
+    async def test_detail_store_link_per_variant(
+        self, client: httpx.AsyncClient, admin_token: str, seed: Seeder
+    ) -> None:
+        """FR-009: own (vínculo próprio), inherited (só o pai), none (sem vínculo)."""
+        pid = await seed.product(
+            "Vinculos",
+            link=1_029_000_900,
+            variants=[
+                V(sku=f"{seed.tag}-OWN", link=1_029_000_901),
+                V(sku=f"{seed.tag}-INH", source="PARENT_LINK"),
+            ],
+        )
+        orphan = await seed.product(
+            "SemVinculo", listed=False, variants=[V(source=None, line_one=False, active=False)]
+        )
+
+        data = (await client.get(f"{URL}/{pid}", headers=auth_headers(admin_token))).json()["data"]
+        by = {v["bling_sku"].removeprefix(f"{seed.tag}-"): v for v in data["variants"]}
+        assert by["OWN"]["store_link"] == "own" and by["OWN"]["store_price"] == "10.00"
+        assert by["INH"]["store_link"] == "inherited"
+
+        none = (await client.get(f"{URL}/{orphan}", headers=auth_headers(admin_token))).json()
+        variant = none["data"]["variants"][0]
+        assert variant["store_link"] == "none" and variant["published"] is False
+
 
 class TestSortAndPaging:
     async def test_sorts_and_order(

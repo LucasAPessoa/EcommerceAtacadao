@@ -28,6 +28,7 @@ Cada item ganha:
   "is_active": true,
   "published": true,
   "price_source": "variant_link",
+  "store_link": "own",
   "store_price": "27.90",
   "pricing_status": "confirmed",
   "pricing_confirmed_at": "2026-10-29T12:00:00Z",
@@ -39,6 +40,8 @@ Cada item ganha:
 }
 ```
 `price_source`: `variant_link` (vínculo da variação), `parent_link` (herdado do pai), `general` (vínculo com preço 0, usa o preço geral do Bling). `pricing_tiers` sempre começa pela linha `min_quantity = 1`.
+
+`store_link` (sempre presente): `own` (vínculo da própria variação; num produto sem variações, o vínculo do produto), `inherited` (sem vínculo próprio, herda o do pai), `none` (sem vínculo: fora da loja). `store_price` é o preço do vínculo efetivo (próprio ou do pai); em `none`, normalmente `null`. `published` não deriva de `store_link`: depende também de variação/produto ativos, produto listado e linha de 1 unidade. Salvar a tabela de uma variação `none` cria o vínculo próprio e publica na hora: a resposta já volta `store_link: "own"`, `published: true` e `pricing_status: "confirmed"`, e a variação aparece no catálogo público em seguida. Exceção: produto inativo no Bling ou variação sem peso/medidas, que fica `own` com `published: false` (como a sync deixaria). O mesmo campo vem na resposta do `PUT .../pricing`.
 
 ### `PUT /api/v1/admin/products/{id}/variants/{variant_id}/pricing`
 Substitui a tabela inteira da variação e confirma.

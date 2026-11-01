@@ -66,6 +66,22 @@ def _set_own_link(variant: ProductVariant, link_id: int) -> None:
         variant.bling_store_link_id = link_id
 
 
+def _publish_now(variant: ProductVariant) -> None:
+    """Vínculo recém-criado (FR-009): a variação vai à loja na hora, sem esperar a sync.
+
+    Respeita o que a sync exigiria: produto ativo no Bling ("A"), não excluído, e variação com
+    peso e medidas (R8). Faltando algo, fica vinculada mas fora da loja, como a sync deixaria."""
+    product = variant.product
+    if product.deleted_at is not None or variant.deleted_at is not None or product.status != "A":
+        return
+    dims = (variant.weight_kg, variant.width_cm, variant.height_cm, variant.length_cm)
+    if not all(d and d > 0 for d in dims):
+        return
+    variant.is_active = True
+    product.store_listed = True
+    product.is_active = True
+
+
 MSG_STALE = "O preço foi alterado por outra operação; recarregue."
 
 
@@ -226,6 +242,8 @@ class StorePricingService:
                 )
             variant.pricing_status = PricingStatus.CONFIRMED
             variant.pricing_confirmed_at = _utcnow()
+            if new_link is not None:
+                _publish_now(variant)
             await self.session.commit()
         except BaseException:
             await self.session.rollback()

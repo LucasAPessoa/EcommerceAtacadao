@@ -23,6 +23,7 @@ from src.schemas.admin.products import (
     PendingReason,
     PricingStatusValue,
     PricingWarning,
+    StoreLinkValue,
     UpdatedBy,
 )
 from src.services.sales.pricing import is_variant_published
@@ -61,12 +62,29 @@ def variant_warnings(variant: ProductVariant) -> list[PricingWarning]:
     return warnings
 
 
+def store_link_kind(variant: ProductVariant) -> StoreLinkValue:
+    """Vínculo da variação com a loja do site, igual à sync (``catalog_sync_service._publish``).
+
+    Produto sem variações (mesmo ``bling_id``): o vínculo do produto é o próprio. Exige
+    ``variant.product`` carregado.
+    """
+    product = variant.product
+    if variant.bling_id is not None and variant.bling_id == product.bling_id:
+        return StoreLinkValue.OWN if product.bling_store_link_id else StoreLinkValue.NONE
+    if variant.bling_store_link_id is not None:
+        return StoreLinkValue.OWN
+    if product.bling_store_link_id is not None:
+        return StoreLinkValue.INHERITED
+    return StoreLinkValue.NONE
+
+
 def variant_pricing_fields(variant: ProductVariant) -> dict[str, Any]:
     """Campos de preço da variação no formato do contrato (detalhe e PUT da tabela)."""
     tiers = sorted(variant.pricing_tiers, key=lambda t: t.min_quantity)
     return {
         "published": is_variant_published(variant),
         "price_source": variant.price_source.value.lower() if variant.price_source else None,
+        "store_link": store_link_kind(variant),
         "store_price": variant.store_price,
         "pricing_status": variant.pricing_status.value.lower(),
         "pricing_confirmed_at": variant.pricing_confirmed_at,

@@ -40,6 +40,7 @@ class V:
     source: Optional[str] = "VARIANT_LINK"  # price_source (None = sem vínculo)
     line_one: bool = True  # cria a linha de 1 unidade (variação publicada)
     tiers: tuple[tuple[int, str], ...] = ()  # faixas a partir de 2 unidades
+    link: Optional[int] = None  # bling_store_link_id (vínculo próprio da variação)
 
 
 @pytest_asyncio.fixture
@@ -91,6 +92,7 @@ class Seeder:
         presentation: Optional[dict[str, Any]] = None,
         site_categories: tuple[uuid.UUID, ...] = (),
         listed: bool = True,
+        link: Optional[int] = None,  # bling_store_link_id do produto (vínculo do pai)
     ) -> uuid.UUID:
         pid = uuid.uuid4()
         code = code or f"{self.tag}-{pid.hex[:8]}"
@@ -98,9 +100,9 @@ class Seeder:
             await conn.execute(
                 text(
                     "INSERT INTO products (id, name, code, is_active, store_listed, deleted_at,"
-                    " description, brand, unit, status, created_at, updated_at)"
-                    " VALUES (:id, :n, :c, :a, :listed, :d, 'desc bling', 'Marca', 'UN', 'A',"
-                    " :t, :u)"
+                    " description, brand, unit, status, bling_store_link_id, created_at,"
+                    " updated_at) VALUES (:id, :n, :c, :a, :listed, :d, 'desc bling', 'Marca',"
+                    " 'UN', 'A', :link, :t, :u)"
                 ),
                 {
                     "id": pid,
@@ -111,6 +113,7 @@ class Seeder:
                     "t": NOW,
                     "u": updated_at,
                     "listed": listed,
+                    "link": link,
                 },
             )
             self.products.append(pid)
@@ -123,9 +126,9 @@ class Seeder:
                         "INSERT INTO product_variants (id, product_id, bling_sku, variation_name,"
                         " gtin, base_price, stock_quantity, is_active, weight_kg, height_cm,"
                         " width_cm, length_cm, pricing_status, store_price, price_source,"
-                        " pricing_confirmed_at, deleted_at, created_at, updated_at) VALUES"
-                        " (:id, :p, :sku, 'v', :gtin, :price, :stock, :a, :w, :h, :wd, :l,"
-                        " :pstatus, :price, :source, :t, :d, :t, :t)"
+                        " pricing_confirmed_at, bling_store_link_id, deleted_at, created_at,"
+                        " updated_at) VALUES (:id, :p, :sku, 'v', :gtin, :price, :stock, :a, :w,"
+                        " :h, :wd, :l, :pstatus, :price, :source, :t, :link, :d, :t, :t)"
                     ),
                     {
                         "id": vid,
@@ -143,6 +146,7 @@ class Seeder:
                         "t": NOW,
                         "pstatus": v.status,
                         "source": v.source,
+                        "link": v.link,
                     },
                 )
                 rows = [(1, v.price)] if v.line_one else []

@@ -37,6 +37,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "categories": [],
     "balances": {},
     "store_links": [],
+    # ids de vínculos que existem (GET por id) mas a listagem ainda não devolve: simula o atraso
+    # do Bling logo após criar o vínculo.
+    "hidden_store_links": [],
     "catalog_failures": {},
     # Imagens como links S3 assinados do Bling real: Signature/Expires mudam a cada leitura.
     "sign_images": False,
@@ -164,7 +167,8 @@ async def list_store_links(
     rows = [
         link
         for link in _config["store_links"]
-        if (idLoja is None or (link.get("loja") or {}).get("id") == idLoja)
+        if link["id"] not in _config.get("hidden_store_links", [])
+        and (idLoja is None or (link.get("loja") or {}).get("id") == idLoja)
         and (idProduto is None or (link.get("produto") or {}).get("id") == idProduto)
     ]
     return {"data": _paginate(rows, pagina, limite)}
