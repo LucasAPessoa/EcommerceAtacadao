@@ -42,6 +42,30 @@ MSG_STORE_NOT_CONFIGURED = (
 )
 
 
+def _is_simple(variant: ProductVariant) -> bool:
+    """Produto sem variações: a única variação espelha o próprio produto do Bling."""
+    product = variant.product
+    return (
+        product is not None
+        and variant.bling_id is not None
+        and (variant.bling_id == product.bling_id)
+    )
+
+
+def _own_link(variant: ProductVariant) -> Optional[int]:
+    """Vínculo que esta variação pode escrever: o próprio, ou o do produto se ele é simples."""
+    if _is_simple(variant):
+        return variant.product.bling_store_link_id
+    return variant.bling_store_link_id
+
+
+def _set_own_link(variant: ProductVariant, link_id: int) -> None:
+    if _is_simple(variant):
+        variant.product.bling_store_link_id = link_id
+    else:
+        variant.bling_store_link_id = link_id
+
+
 MSG_STALE = "O preço foi alterado por outra operação; recarregue."
 
 
@@ -161,7 +185,7 @@ class StorePricingService:
                 raise StorePricingNotFoundError("Variação não encontrada.")
             read_line = next((t for t in variant.pricing_tiers if t.min_quantity == 1), None)
             read_price = None if read_line is None else _money(read_line.unit_price)
-            read_link = variant.bling_store_link_id
+            read_link = _own_link(variant)
             changed = read_price != unit_price
             new_link: Optional[int] = None
             if changed:
@@ -172,16 +196,19 @@ class StorePricingService:
                 raise StorePricingNotFoundError("Variação não encontrada.")
             line_one = next((t for t in variant.pricing_tiers if t.min_quantity == 1), None)
             current_price = None if line_one is None else _money(line_one.unit_price)
-            if current_price != read_price or variant.bling_store_link_id != read_link:
-                if new_link is not None and variant.bling_store_link_id is None:
+            if current_price != read_price or _own_link(variant) != read_link:
+                if new_link is not None and _own_link(variant) is None:
                     # o vínculo já existe no Bling: guarda só o id, para não ficar órfão
-                    variant.bling_store_link_id = new_link
+                    _set_own_link(variant, new_link)
                     await self.session.commit()
                 raise StorePricingConflictError(MSG_STALE)
             if changed:
                 if new_link is not None:
-                    variant.bling_store_link_id = new_link
-                variant.price_source = PriceSource.VARIANT_LINK
+                    _set_own_link(variant, new_link)
+                # Produto sem variações: o vínculo é o do produto (a sync grava PARENT_LINK).
+                variant.price_source = (
+                    PriceSource.PARENT_LINK if _is_simple(variant) else PriceSource.VARIANT_LINK
+                )
                 variant.store_price = unit_price
             if line_one is None:
                 line_one = PricingTier(min_quantity=1, unit_price=unit_price)
@@ -210,9 +237,13 @@ class StorePricingService:
         store_id = self.store_id
         if store_id is None:
             raise StorePricingConflictError(MSG_STORE_NOT_CONFIGURED)
+        # Variação de produto com variações: só o vínculo próprio recebe PUT; se ela herdava do
+        # pai, ganha vínculo novo (POST). O vínculo do pai nunca é escrito por uma variação.
+        # Produto sem variações: o vínculo do produto é o dele (PUT nele, nunca POST duplicado).
+        own_link = _own_link(variant)
         try:
-            if variant.bling_store_link_id is not None:
-                link = await self.client.get_store_link(variant.bling_store_link_id)
+            if own_link is not None:
+                link = await self.client.get_store_link(own_link)
                 await self.client.put_store_link(
                     link.id, store_link_body_with_price(link, unit_price, variant.bling_sku)
                 )
