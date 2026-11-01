@@ -565,3 +565,98 @@ async def test_stale_after_link_creation_keeps_new_link_id_only(
     assert _table(variant) == [(1, Decimal("11.00"))]
     assert variant.price_source == PriceSource.PARENT_LINK
     assert variant.pricing_status == PricingStatus.PENDING
+
+
+# ------------------------------- vínculo do pai x vínculo próprio x produto sem variações
+
+PARENT_LINK_ID = LINK_ID + 500
+
+
+async def test_put_never_targets_parent_link_of_product_with_variants(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    """Pai e variação vinculados: o save da variação só escreve o vínculo dela."""
+    parent_link = {**_bling_link(9.0), "id": PARENT_LINK_ID, "produto": {"id": PRODUCT_BLING_ID}}
+    await _setup_bling(fake, [parent_link, _bling_link(10.0)])
+    product_id, variant_id = await _seed(factory)
+    async with factory.begin() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        product.bling_store_link_id = PARENT_LINK_ID
+    await _save(factory, product_id, variant_id, "12.50")
+
+    calls = await _calls(fake)
+    assert [(c["method"], c["path"]) for c in calls] == [("PUT", f"/produtos/lojas/{LINK_ID}")]
+    assert all(str(PARENT_LINK_ID) not in c["path"] for c in calls)
+    assert calls[0]["body"]["produto"] == {"id": VARIANT_BLING_ID}
+    async with factory() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        assert product.bling_store_link_id == PARENT_LINK_ID
+
+
+async def _seed_simple(factory: Factory, *, link: Optional[int]) -> tuple[uuid.UUID, uuid.UUID]:
+    """Produto sem variações: a única variação tem o mesmo `bling_id` do produto e, como na
+    sync, fica sem vínculo próprio (o vínculo é o do produto)."""
+    async with factory.begin() as session:
+        product = Product(
+            name="Sabão",
+            bling_id=PRODUCT_BLING_ID,
+            is_active=True,
+            store_listed=link is not None,
+            bling_store_link_id=link,
+        )
+        session.add(product)
+        await session.flush()
+        variant = ProductVariant(
+            product_id=product.id,
+            bling_id=PRODUCT_BLING_ID,
+            bling_sku="SAB-1",
+            variation_name="Sabão",
+            base_price=Decimal("10.00"),
+            is_active=link is not None,
+            bling_store_link_id=None,
+            store_price=Decimal("10.00") if link is not None else None,
+            price_source=PriceSource.PARENT_LINK if link is not None else None,
+            pricing_status=PricingStatus.PENDING,
+        )
+        session.add(variant)
+        await session.flush()
+        session.add(PricingTier(variant_id=variant.id, min_quantity=1, unit_price=Decimal("10.00")))
+        return product.id, variant.id
+
+
+async def test_simple_product_puts_product_link_instead_of_creating_duplicate(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    link = {**_bling_link(10.0), "codigo": "SAB-1", "produto": {"id": PRODUCT_BLING_ID}}
+    await _setup_bling(fake, [link])
+    product_id, variant_id = await _seed_simple(factory, link=LINK_ID)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    calls = await _calls(fake)
+    assert [(c["method"], c["path"]) for c in calls] == [("PUT", f"/produtos/lojas/{LINK_ID}")]
+    assert calls[0]["body"] == {**link, "preco": 12.5}
+    variant = await _variant(factory, variant_id)
+    assert _table(variant) == [(1, Decimal("12.50"))]
+    assert variant.bling_store_link_id is None  # igual à sync: o vínculo é o do produto
+    assert variant.price_source == PriceSource.PARENT_LINK
+    assert variant.pricing_status == PricingStatus.CONFIRMED
+    async with factory() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        assert product.bling_store_link_id == LINK_ID
+
+
+async def test_simple_product_without_link_creates_product_link(
+    factory: Factory, fake: httpx.AsyncClient
+) -> None:
+    await _setup_bling(fake, [])
+    product_id, variant_id = await _seed_simple(factory, link=None)
+    await _save(factory, product_id, variant_id, "12.50")
+
+    calls = await _calls(fake)
+    assert [c["method"] for c in calls] == ["POST"]
+    assert calls[0]["body"]["produto"] == {"id": PRODUCT_BLING_ID}
+    variant = await _variant(factory, variant_id)
+    assert variant.bling_store_link_id is None
+    async with factory() as session:
+        product = (await session.execute(select(Product))).scalar_one()
+        assert product.bling_store_link_id is not None
