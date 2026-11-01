@@ -53,7 +53,9 @@ class RefreshToken(Base, TimestampMixin):
     __tablename__ = "refresh_tokens"
     id: Mapped[uuid.UUID] = uuid_primary_key()
     user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
-    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)  # Index adicionado
+    # Digest SHA-256 (hex) do refresh token, nunca o token cru: ver
+    # refresh_token_digest em refresh_token_repository.py (back #7).
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     expires_at: Mapped[DateTime] = mapped_column(DateTime)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
