@@ -4,9 +4,22 @@ Tests for the auth module: /auth/register, /auth/login, /auth/refresh, /auth/log
 
 from __future__ import annotations
 
+import hashlib
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from typing import AsyncIterator
+from uuid import UUID
+
 import httpx
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from src.core.sec import create_refresh_token
+from src.models.identity import RefreshToken
+from src.repositories.identity.refresh_token_repository import refresh_token_digest
 from tests.conftest import (
     ADMIN_CREDENTIALS,
     API_V1_PREFIX,
@@ -208,6 +221,62 @@ class TestRefresh:
         """Missing refresh_token field should return 422."""
         resp = await client.post(f"{API_V1_PREFIX}/auth/refresh", json={})
         assert resp.status_code == 422
+
+
+@asynccontextmanager
+async def _db_session() -> AsyncIterator[AsyncSession]:
+    """Engine próprio com NullPool: o pool global fica preso a outro event loop."""
+    url = os.environ.get("DATABASE_URL")
+    assert url, "DATABASE_URL ausente: rode via scripts/run_api_tests.sh"
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with AsyncSession(engine) as session:
+            yield session
+    finally:
+        await engine.dispose()
+
+
+class TestRefreshTokenStorage:
+    """back #7: o banco guarda só o digest do refresh token."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_is_stored_as_digest(
+        self, client: httpx.AsyncClient, user_refresh_token: str
+    ):
+        async with _db_session() as session:
+            raw = await session.scalar(
+                select(RefreshToken).where(RefreshToken.token == user_refresh_token)
+            )
+            stored = await session.scalar(
+                select(RefreshToken).where(
+                    RefreshToken.token == refresh_token_digest(user_refresh_token)
+                )
+            )
+        assert raw is None
+        assert stored is not None
+        assert stored.token == hashlib.sha256(user_refresh_token.encode()).hexdigest()
+
+    @pytest.mark.asyncio
+    async def test_legacy_raw_token_row_is_not_accepted(self, client: httpx.AsyncClient):
+        """Linha antiga com o token cru deixa de valer: o refresh devolve 401."""
+        payload = make_user_payload(email=unique_email("legacy_raw"))
+        reg = await client.post(f"{API_V1_PREFIX}/auth/register", json=payload)
+        assert reg.status_code in (200, 201), reg.text
+        user_id = UUID(reg.json()["data"]["id"])
+        legacy = create_refresh_token({"sub": payload["email"]})
+        async with _db_session() as session:
+            session.add(
+                RefreshToken(
+                    token=legacy,
+                    user_id=user_id,
+                    expires_at=datetime.utcnow() + timedelta(days=1),
+                    revoked=False,
+                )
+            )
+            await session.commit()
+
+        resp = await client.post(f"{API_V1_PREFIX}/auth/refresh", json={"refresh_token": legacy})
+        assert resp.status_code == 401, resp.text
 
 
 # ─────────────────────────────────────────────────────────────────────────────

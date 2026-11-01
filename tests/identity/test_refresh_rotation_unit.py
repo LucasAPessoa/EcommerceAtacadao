@@ -6,7 +6,10 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from src.repositories.identity.refresh_token_repository import RefreshTokenRepository
+from src.repositories.identity.refresh_token_repository import (
+    RefreshTokenRepository,
+    refresh_token_digest,
+)
 from src.services.identity.auth_service import AuthService
 
 
@@ -121,4 +124,33 @@ async def test_repository_claim_has_all_guards_and_does_not_commit():
     assert "RETURNING refresh_tokens.id" in sql
     assert owner in statement.params.values()
     assert now in statement.params.values()
+    assert refresh_token_digest("token") in statement.params.values()
+    assert "token" not in statement.params.values()
     session.commit.assert_not_awaited()
+
+
+async def test_repository_persists_only_the_digest():
+    """back #7: o token cru nunca chega ao banco."""
+    session = SimpleNamespace(add=Mock(), flush=AsyncMock())
+    repository = RefreshTokenRepository(session)
+    token_data = {"token": "raw.jwt.token", "user_id": uuid4(), "revoked": False}
+
+    stored = await repository.create(token_data)
+
+    assert stored.token == refresh_token_digest("raw.jwt.token")
+    assert stored.token != "raw.jwt.token"
+    assert len(stored.token) == 64
+    assert token_data["token"] == "raw.jwt.token"
+
+
+async def test_repository_lookup_uses_digest():
+    row = SimpleNamespace(token=refresh_token_digest("raw.jwt.token"))
+    result = Mock()
+    result.scalar_one_or_none.return_value = row
+    session = SimpleNamespace(execute=AsyncMock(return_value=result))
+    repository = RefreshTokenRepository(session)
+
+    assert await repository.get_by_token("raw.jwt.token") is row
+    statement = session.execute.await_args.args[0].compile(dialect=postgresql.dialect())
+    assert refresh_token_digest("raw.jwt.token") in statement.params.values()
+    assert "raw.jwt.token" not in statement.params.values()

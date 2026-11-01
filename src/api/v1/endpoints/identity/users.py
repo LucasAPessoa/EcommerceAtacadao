@@ -29,7 +29,6 @@ async def get_current_user_info(current_user: User = Depends(require_role(["admi
     Get current user information.
     Only accessible by admin and regular users.
     """
-    print(f"Current user: {current_user.email}, Roles: {current_user.role}")
     return BaseResponse[UserResponse](data=UserResponse.model_validate(current_user))
 
 
