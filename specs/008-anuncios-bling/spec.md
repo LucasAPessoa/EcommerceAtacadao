@@ -126,6 +126,10 @@ O admin vê no site a lista de produtos importados com o estado de cada um (agua
 ### Edge Cases
 
 - Vínculo só no produto pai: todas as variações recebem o preço do pai até o admin ajustar uma delas; o ajuste cria um vínculo próprio da variação no Bling.
+- Variação sem vínculo nenhum (nem ela nem o pai vinculados à loja do site): fica fora da loja, mas aparece no admin como "não publicada" (`store_link = none`). Salvar a linha de 1 unidade dela cria o vínculo próprio da variação no Bling (POST) e a publica na hora, já com o preço confirmado, sem esperar a sincronização (decisão do usuário, 01/11). Só não entra se a sync também a barraria (produto inativo no Bling, peso ou medidas ausentes): fica vinculada, fora da loja, com o motivo.
+- Vínculo recém-criado que a listagem do Bling ainda não devolve: a sincronização confere o vínculo pelo id antes de tirar algo da loja; só remove se o Bling disser que ele não existe (404). Falha nessa conferência conta como leitura incompleta (nada sai da loja).
+- Produto sem variações: o vínculo do produto é o dele; editar o preço atualiza esse vínculo (PUT), nunca cria um segundo.
+- O site NUNCA escreve no vínculo do produto pai por causa de uma variação (decisão do usuário, 31/10).
 - Variação removida ou inativada no Bling: sai da loja; a tabela fica guardada.
 - Variação nova num produto já vinculado pelo pai: entra com a linha de 1 unidade do anúncio; se a confirmação automática estiver desligada, só essa variação fica aguardando preços.
 - Edição simultânea do preço no site e no Bling: vale a última gravada no Bling; o site relê o vínculo antes de escrever e não altera outros campos dele.
@@ -145,7 +149,7 @@ O admin vê no site a lista de produtos importados com o estado de cada um (agua
 - **FR-006**: Confirmar sem alterações MUST deixar só a linha de 1 unidade.
 - **FR-007**: O admin MUST poder criar, editar e remover faixas por variação (quantidade mínima ≥ 2, preço menor que a linha de 1 unidade, quantidade mínima única por variação), com mensagens em português.
 - **FR-008**: O preço de cada item MUST vir da tabela da própria variação, pela quantidade dessa variação: o menor entre a linha de 1 unidade e a faixa elegível de maior quantidade mínima. O pedido MUST registrar o preço e a faixa aplicada.
-- **FR-009**: Editar a linha de 1 unidade no site MUST gravar o preço no vínculo da variação com a loja do site no Bling (criando o vínculo da variação se ela só herdava o do pai) antes de valer no site; falha no Bling MUST manter o preço anterior e informar o admin.
+- **FR-009**: Editar a linha de 1 unidade no site MUST gravar o preço no vínculo da variação com a loja do site no Bling (criando o vínculo da variação se ela só herdava o do pai ou não tinha vínculo nenhum; neste último caso a edição publica a variação na hora, com o preço confirmado, se a sincronização também a publicaria) antes de valer no site; o vínculo do produto pai MUST NOT ser escrito por causa de uma variação (produto sem variações: o vínculo do produto é o próprio); falha no Bling MUST manter o preço anterior e informar o admin. O admin MUST mostrar, por variação, o tipo de vínculo (`own`, `inherited`, `none`).
 - **FR-010**: A sincronização MUST atualizar a linha de 1 unidade quando o preço do vínculo mudar no Bling, sem alterar as faixas.
 - **FR-011**: O site MUST avisar o admin (lista, detalhe, dashboard e pendências) quando uma faixa ficar igual ou acima da linha de 1 unidade, sem bloquear nem alterar preços.
 - **FR-012**: Nome, descrição e imagens MUST vir do cadastro do produto no Bling; o admin do site MUST NOT editá-los. Visibilidade e destaque continuam no site.

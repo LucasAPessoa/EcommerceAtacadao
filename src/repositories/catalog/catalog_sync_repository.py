@@ -166,6 +166,29 @@ class CatalogSyncRepository:
 
     # ------------------------------------------------------------ produtos
 
+    async def stored_store_links(self) -> dict[int, int]:
+        """Vínculos produto-loja gravados no site: ``bling_id`` (produto ou variação) -> id.
+
+        Base para conferir, antes de despublicar, vínculos que a listagem do Bling ainda não
+        devolve (o site acabou de criá-los, FR-009)."""
+        links: dict[int, int] = {}
+        products = await self.session.execute(
+            select(Product.bling_id, Product.bling_store_link_id).where(
+                Product.bling_id.is_not(None), Product.bling_store_link_id.is_not(None)
+            )
+        )
+        variants = await self.session.execute(
+            select(ProductVariant.bling_id, ProductVariant.bling_store_link_id).where(
+                ProductVariant.bling_id.is_not(None),
+                ProductVariant.bling_store_link_id.is_not(None),
+                ProductVariant.deleted_at.is_(None),
+            )
+        )
+        for bling_id, link_id in [*products.all(), *variants.all()]:
+            if bling_id is not None and link_id is not None:
+                links[bling_id] = link_id
+        return links
+
     async def known_resolution(self, bling_ids: Sequence[int]) -> tuple[set[int], dict[int, int]]:
         """Resolve ids de vínculos sem HTTP: (ids que já são produto pai/simples, variação -> pai).
 

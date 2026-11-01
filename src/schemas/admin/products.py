@@ -45,6 +45,14 @@ class PriceSourceValue(str, Enum):
     GENERAL = "general"
 
 
+class StoreLinkValue(str, Enum):
+    """Vínculo da variação com a loja do site no Bling (FR-009)."""
+
+    OWN = "own"  # vínculo da própria variação (ou do produto, se ele não tem variações)
+    INHERITED = "inherited"  # sem vínculo próprio, herda o do produto pai
+    NONE = "none"  # sem vínculo: fora da loja; salvar o preço cria o vínculo próprio
+
+
 class AdminProductListItem(BaseModel):
     id: UUID
     code: Optional[str] = None
@@ -81,6 +89,7 @@ class AdminVariant(BaseModel):
     images: list[str] = []
     published: bool = False
     price_source: Optional[PriceSourceValue] = None
+    store_link: StoreLinkValue = StoreLinkValue.NONE
     store_price: Optional[Money] = None
     pricing_status: PricingStatusValue = PricingStatusValue.PENDING
     pricing_confirmed_at: Optional[datetime] = None
