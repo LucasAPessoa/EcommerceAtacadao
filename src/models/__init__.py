@@ -39,7 +39,15 @@ from .operations import (
 )
 
 # Domínio de Vendas (Carts, Orders, Coupons)
-from .sales import Cart, CartItem, Coupon, Order, OrderItem, StockReservation
+from .sales import (
+    BlingOrderAction,
+    Cart,
+    CartItem,
+    Coupon,
+    Order,
+    OrderItem,
+    StockReservation,
+)
 
 # Configuração da loja (tema)
 from .store import StoreSettings
@@ -63,6 +71,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "StockReservation",
+    "BlingOrderAction",
     "Transaction",
     "PaymentReconciliation",
     "Refund",

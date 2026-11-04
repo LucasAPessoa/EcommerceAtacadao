@@ -7,6 +7,8 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
+    BigInteger,
     Integer,
     Numeric,
     String,
@@ -18,7 +20,13 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, SoftDeleteMixin, TimestampMixin, uuid_primary_key
-from .enums import DiscountTypeEnum, OrderStatusEnum, StockReservationStatusEnum
+from .enums import (
+    BlingOrderActionKind,
+    BlingOrderActionStatus,
+    DiscountTypeEnum,
+    OrderStatusEnum,
+    StockReservationStatusEnum,
+)
 
 
 def generate_order_code() -> str:
@@ -79,6 +87,7 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
             "checkout_idempotency_key",
             name="uq_orders_user_checkout_idempotency",
         ),
+        UniqueConstraint("bling_order_id", name="uq_orders_bling_order_id"),
         CheckConstraint("subtotal_amount >= 0", name="ck_orders_subtotal_non_negative"),
         CheckConstraint("discount_amount >= 0", name="ck_orders_discount_non_negative"),
         CheckConstraint("shipping_fee >= 0", name="ck_orders_shipping_non_negative"),
@@ -111,6 +120,13 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
         SQLEnum(OrderStatusEnum), default=OrderStatusEnum.PENDING_PAYMENT
     )
     bling_registered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    bling_order_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    bling_order_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    bling_order_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    bling_situation_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    bling_stock_posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    bling_stock_reversed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    stock_cancel_reason: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="orders")
     items: Mapped[List["OrderItem"]] = relationship(back_populates="order")
@@ -174,9 +190,44 @@ class StockReservation(Base, TimestampMixin):
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     released_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    bling_reflected_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     order: Mapped["Order"] = relationship(back_populates="stock_reservations")
     variant: Mapped["ProductVariant"] = relationship()
+
+
+class BlingOrderAction(Base):
+    """Fila persistida de ações no Bling por pedido (spec 009)."""
+
+    __tablename__ = "bling_order_actions"
+    __table_args__ = (
+        UniqueConstraint("order_id", "kind", name="uq_bling_order_actions_order_kind"),
+        Index(
+            "ix_bling_order_actions_pending_retry",
+            "next_retry_at",
+            postgresql_where="status = 'PENDING'",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orders.id"), index=True
+    )
+    kind: Mapped[BlingOrderActionKind] = mapped_column(
+        SQLEnum(BlingOrderActionKind, name="bling_order_action_kind")
+    )
+    status: Mapped[BlingOrderActionStatus] = mapped_column(
+        SQLEnum(BlingOrderActionStatus, name="bling_order_action_status"),
+        default=BlingOrderActionStatus.PENDING,
+        server_default=BlingOrderActionStatus.PENDING.value,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    order: Mapped["Order"] = relationship()
 
 
 # NOVA TABELA DE AUDITORIA

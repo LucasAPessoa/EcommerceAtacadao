@@ -130,3 +130,18 @@ class PriceSource(str, enum.Enum):
 class PricingStatus(str, enum.Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
+
+
+class BlingOrderActionKind(str, enum.Enum):
+    CREATE = "CREATE"
+    MARK_PAID = "MARK_PAID"
+    POST_STOCK = "POST_STOCK"
+    REVERSE_STOCK = "REVERSE_STOCK"
+    CANCEL = "CANCEL"
+
+
+class BlingOrderActionStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"

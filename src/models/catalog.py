@@ -127,6 +127,8 @@ class ProductVariant(Base, TimestampMixin, SoftDeleteMixin):
     base_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     stock_quantity: Mapped[int] = mapped_column(default=0)
     last_bling_sync: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Início da leitura de saldo que gravou o valor (sync ou leitura na hora)
+    stock_read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
 
     # Preço por variação (vínculo produto-loja do Bling)
