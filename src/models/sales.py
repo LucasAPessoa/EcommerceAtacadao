@@ -106,6 +106,9 @@ class Order(Base, TimestampMixin, SoftDeleteMixin):
     shipping_service_id: Mapped[Optional[int]] = mapped_column(Integer)
     shipping_service_name: Mapped[Optional[str]] = mapped_column(String(100))
     shipping_delivery_time_days: Mapped[Optional[int]] = mapped_column(Integer)
+    # Cotação usada no pedido (#62): serviço, preços, prazos e `packages` do Melhor Envio,
+    # para a etiqueta (#63) usar os mesmos volumes e valores.
+    shipping_quote_snapshot: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
 
     status: Mapped[OrderStatusEnum] = mapped_column(
         SQLEnum(OrderStatusEnum), default=OrderStatusEnum.PENDING_PAYMENT
