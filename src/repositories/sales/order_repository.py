@@ -460,6 +460,7 @@ class OrderRepository:
         shipping_service_name: Optional[str],
         shipping_delivery_time_days: Optional[int],
         reservation_expires_at: datetime,
+        shipping_quote_snapshot: Optional[dict] = None,
     ) -> Order:
         order = Order(
             user_id=user_id,
@@ -475,6 +476,7 @@ class OrderRepository:
             shipping_service_id=shipping_service_id,
             shipping_service_name=shipping_service_name,
             shipping_delivery_time_days=shipping_delivery_time_days,
+            shipping_quote_snapshot=shipping_quote_snapshot,
         )
         self.session.add(order)
         await self.session.flush()  # gera order.id / order.order_code / order.status (default)

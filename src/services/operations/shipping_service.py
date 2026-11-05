@@ -1,7 +1,9 @@
-from decimal import Decimal
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from math import isfinite
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
+from src.core.client_config import get_client_config
 from src.integrations.melhor_envio.client import MelhorEnvioClient
 from src.integrations.melhor_envio.schemas import MelhorEnvioProductItem, MelhorEnvioQuote
 from src.repositories.catalog.product_variant_repository import ProductVariantRepository
@@ -77,7 +79,48 @@ class ShippingService:
 
     @staticmethod
     def _valid_quotes(quotes: List[MelhorEnvioQuote]) -> List[MelhorEnvioQuote]:
-        return [q for q in quotes if q.error is None and q.effective_price is not None]
+        return [q for q in quotes if q.error is None and q.base_price is not None]
+
+    @staticmethod
+    def apply_margin(base_price: Decimal, margin_percent: Decimal) -> Decimal:
+        """Preço final = preço do ME × (1 + margem/100), em centavos (ROUND_HALF_UP)."""
+        final = base_price * (Decimal("1") + margin_percent / Decimal("100"))
+        return final.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def total_weight_kg(products: List[MelhorEnvioProductItem]) -> Decimal:
+        total = sum((Decimal(str(p.weight)) * p.quantity for p in products), start=Decimal("0"))
+        return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _snapshot(
+        quote: MelhorEnvioQuote,
+        base_price: Decimal,
+        final_price: Decimal,
+        margin_percent: Decimal,
+        handling_days: int,
+        delivery_days: Optional[int],
+        insurance_value: Decimal,
+        quoted_at: str,
+    ) -> Dict[str, Any]:
+        """Cotação gravada no pedido (#62), em tipos JSON."""
+        return {
+            "source": "melhor_envio",
+            "quoted_at": quoted_at,
+            "service_id": quote.id,
+            "service_name": quote.name,
+            "company_id": quote.company.id if quote.company else None,
+            "company_name": quote.company.name if quote.company else None,
+            "base_price": str(base_price),
+            "margin_percent": str(margin_percent),
+            "final_price": str(final_price),
+            "delivery_time": quote.delivery_time,
+            "handling_days": handling_days,
+            "delivery_days_final": delivery_days,
+            "delivery_range": quote.delivery_range,
+            "insurance_value": str(insurance_value),
+            "packages": quote.packages,
+        }
 
     async def _quotes_for_products(
         self,
@@ -88,20 +131,43 @@ class ShippingService:
         quotes = await self.client.calculate(origin_zip_code, destination_zip_code, products)
         valid = self._valid_quotes(quotes)
         if not valid:
+            weight = self.total_weight_kg(products)
             raise ShippingQuoteUnavailableError(
-                "Não há opção de frete disponível para este endereço."
+                f"Não há opção de frete disponível para este endereço (peso total {weight} kg)."
             )
 
-        result = [
-            ShippingQuoteSchema(
-                service_id=q.id,
-                service_name=q.name,
-                company_name=q.company.name if q.company else None,
-                price=q.effective_price,
-                delivery_time_days=q.effective_delivery_time,
+        shipping = get_client_config().shipping
+        insurance = sum(
+            (Decimal(str(p.insurance_value)) * p.quantity for p in products), start=Decimal("0")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        quoted_at = datetime.now(UTC).isoformat()
+        result = []
+        for q in valid:
+            base_price = q.base_price
+            assert base_price is not None  # garantido por _valid_quotes
+            final_price = self.apply_margin(base_price, shipping.margin_percent)
+            delivery_days = (
+                q.delivery_time + shipping.handling_days if q.delivery_time is not None else None
             )
-            for q in valid
-        ]
+            result.append(
+                ShippingQuoteSchema(
+                    service_id=q.id,
+                    service_name=q.name,
+                    company_name=q.company.name if q.company else None,
+                    price=final_price,
+                    delivery_time_days=delivery_days,
+                    snapshot=self._snapshot(
+                        q,
+                        base_price,
+                        final_price,
+                        shipping.margin_percent,
+                        shipping.handling_days,
+                        delivery_days,
+                        insurance,
+                        quoted_at,
+                    ),
+                )
+            )
         return sorted(result, key=lambda quote: quote.price)
 
     async def calculate_quotes(

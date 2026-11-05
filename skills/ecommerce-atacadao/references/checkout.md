@@ -94,6 +94,14 @@ O snapshot deve refletir quantidade, preço unitário aplicado, subtotal e os
 identificadores/textos já previstos no model. Frete, desconto e total ficam no
 pedido com a precisão do banco.
 
+Frete (#62): o preço é o `price` bruto do Melhor Envio + `STORE_SHIPPING_MARGIN_PERCENT`
+(`ROUND_HALF_UP`, centavos) e o prazo é `delivery_time` + `STORE_HANDLING_DAYS`, os dois
+aplicados só no `ShippingService`. O pedido guarda a cotação usada em
+`orders.shipping_quote_snapshot` (serviço, preços, prazos, seguro e `packages`), e a
+etiqueta deve usar esses volumes. Com o ME fora ou lento (`MELHOR_ENVIO_TIMEOUT_SECONDS`,
+padrão 5 s), preview, confirm e Mercado Pago respondem 503 sem travar nada. Fatos da API:
+[melhor-envio.md](melhor-envio.md).
+
 ## Pagamento
 
 Valide método e parcelas no servidor. Parcelamento só se aplica aos métodos e

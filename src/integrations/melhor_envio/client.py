@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import List
 
@@ -69,12 +70,16 @@ class MelhorEnvioClient:
             "products": [p.model_dump() for p in products],
         }
 
+        limit = settings.MELHOR_ENVIO_TIMEOUT_SECONDS
         try:
-            async with httpx.AsyncClient(base_url=self.base_url, timeout=15.0) as client:
-                response = await client.post(
-                    self.CALCULATE_PATH, json=payload, headers=self._headers()
-                )
-        except httpx.HTTPError as exc:
+            # O timeout do httpx vale por fase (conectar, ler cada pedaço...); o
+            # asyncio.timeout fecha o teto da chamada inteira (#62).
+            async with asyncio.timeout(limit):
+                async with httpx.AsyncClient(base_url=self.base_url, timeout=limit) as client:
+                    response = await client.post(
+                        self.CALCULATE_PATH, json=payload, headers=self._headers()
+                    )
+        except (httpx.HTTPError, TimeoutError) as exc:
             raise MelhorEnvioError("Serviço de frete indisponível. Tente novamente.") from exc
 
         if response.status_code >= 400:

@@ -217,6 +217,7 @@ async def test_confirm_creates_order_and_clears_cart_atomically() -> None:
         company_name="Correios",
         price=Decimal("20.00"),
         delivery_time_days=5,
+        snapshot={"source": "melhor_envio", "final_price": "20.00", "packages": []},
     )
     repository = AsyncMock()
     repository.get_by_idempotency_key.side_effect = [None, None]
@@ -248,6 +249,10 @@ async def test_confirm_creates_order_and_clears_cart_atomically() -> None:
     assert result.id == created_id
     session.rollback.assert_awaited_once()
     repository.create_checkout_order.assert_awaited_once()
+    # #62: o pedido guarda a cotação usada, com o mesmo preço cobrado.
+    kwargs = repository.create_checkout_order.await_args.kwargs
+    assert kwargs["shipping_quote_snapshot"] == quote.snapshot
+    assert kwargs["shipping_fee"] == Decimal(quote.snapshot["final_price"])
     repository.clear_cart.assert_awaited_once_with(cart)
 
 
@@ -300,6 +305,7 @@ async def test_confirm_rejects_quantity_already_reserved() -> None:
         company_name="Correios",
         price=Decimal("20.00"),
         delivery_time_days=5,
+        snapshot={"source": "melhor_envio", "final_price": "20.00", "packages": []},
     )
 
     repository = AsyncMock()
@@ -358,6 +364,7 @@ async def test_confirm_requires_new_preview_when_logistics_change_after_quote() 
         company_name="Correios",
         price=Decimal("20.00"),
         delivery_time_days=5,
+        snapshot={"source": "melhor_envio", "final_price": "20.00", "packages": []},
     )
     repository = AsyncMock()
     repository.get_by_idempotency_key.side_effect = [None, None]
@@ -419,6 +426,7 @@ async def test_confirm_requires_new_preview_when_address_changes_after_quote() -
         company_name="Correios",
         price=Decimal("20.00"),
         delivery_time_days=5,
+        snapshot={"source": "melhor_envio", "final_price": "20.00", "packages": []},
     )
     repository = AsyncMock()
     repository.get_by_idempotency_key.side_effect = [None, None]
@@ -445,3 +453,98 @@ async def test_confirm_requires_new_preview_when_address_changes_after_quote() -
         )
 
     repository.create_checkout_order.assert_not_awaited()
+
+
+# --- #62: Melhor Envio fora do ar ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_confirm_with_melhor_envio_down_creates_nothing() -> None:
+    from src.integrations.melhor_envio.client import MelhorEnvioError
+
+    variant = _variant(stock=5)
+    cart = SimpleNamespace(
+        id=uuid4(), items=[SimpleNamespace(variant_id=variant.id, variant=variant, quantity=2)]
+    )
+    repository = AsyncMock()
+    repository.get_by_idempotency_key.return_value = None
+    repository.get_cart_for_checkout.return_value = cart
+    repository.get_address_for_user.return_value = SimpleNamespace(
+        id=uuid4(),
+        zip_code="01001000",
+        street="Rua A",
+        number="1",
+        complement=None,
+        neighborhood="Centro",
+        city="São Paulo",
+        state="SP",
+    )
+    shipping_service = AsyncMock()
+    shipping_service.calculate_quotes_for_products.side_effect = MelhorEnvioError(
+        "Serviço de frete indisponível. Tente novamente."
+    )
+    session = AsyncMock()
+    service = _service(repository, shipping_service, session)
+
+    with pytest.raises(MelhorEnvioError):
+        await service.confirm(
+            uuid4(),
+            CheckoutConfirmSchema(
+                address_id=uuid4(),
+                shipping_service_id=1,
+                expected_total_amount=Decimal("40.00"),
+                payment_method=PaymentMethodEnum.PIX,
+                installments=1,
+            ),
+            uuid4(),
+        )
+
+    # A cotação acontece antes de qualquer lock: nada é travado, reservado ou criado.
+    repository.lock_cart_for_checkout.assert_not_awaited()
+    repository.create_checkout_order.assert_not_awaited()
+    repository.clear_cart.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "body", "headers"),
+    [
+        ("/checkout/preview", "preview", {"address_id": str(uuid4())}, {}),
+        (
+            "/checkout/confirm",
+            "confirm",
+            {
+                "address_id": str(uuid4()),
+                "shipping_service_id": 1,
+                "expected_total_amount": "40.00",
+                "payment_method": "PIX",
+                "installments": 1,
+            },
+            {"Idempotency-Key": str(uuid4())},
+        ),
+    ],
+)
+def test_checkout_routes_answer_503_when_melhor_envio_is_down(path, method, body, headers) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from src.api.v1.endpoints.sales import checkout as checkout_endpoint
+    from src.core.sec import get_current_active_user
+    from src.integrations.melhor_envio.client import MelhorEnvioError
+
+    app = FastAPI()
+    app.include_router(checkout_endpoint.router)
+    stub = SimpleNamespace(
+        **{
+            method: AsyncMock(
+                side_effect=MelhorEnvioError("Serviço de frete indisponível. Tente novamente.")
+            )
+        }
+    )
+    app.dependency_overrides[checkout_endpoint.get_checkout_service] = lambda: stub
+    user = SimpleNamespace(id=uuid4(), is_active=True, role=SimpleNamespace(name="user"))
+    app.dependency_overrides[get_current_active_user] = lambda: user
+
+    response = TestClient(app).post(path, json=body, headers=headers)
+
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "Serviço de frete indisponível. Tente novamente."
