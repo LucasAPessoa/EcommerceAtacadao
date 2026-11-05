@@ -22,6 +22,8 @@ Leia somente as referências necessárias, sempre por completo:
   [api-surface.md](references/api-surface.md).
 - Carrinho, preço atacadista, frete no pedido, estoque, pagamento ou pedido: leia
   [checkout.md](references/checkout.md) além da referência do domínio afetado.
+- Frete do Melhor Envio (cotação, pacotes, limites, etiqueta): leia
+  [melhor-envio.md](references/melhor-envio.md).
 - Setup, migrações, seed, reset, testes, relatórios ou commits: leia
   [development.md](references/development.md).
 

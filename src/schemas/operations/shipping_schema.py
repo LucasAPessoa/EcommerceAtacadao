@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -29,3 +29,5 @@ class ShippingQuoteSchema(BaseModel):
     company_name: Optional[str] = None
     price: Decimal
     delivery_time_days: Optional[int] = None
+    # Cotação completa gravada no pedido (#62); fica fora das respostas HTTP.
+    snapshot: Optional[Dict[str, Any]] = Field(default=None, exclude=True)

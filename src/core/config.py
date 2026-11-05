@@ -56,6 +56,9 @@ class Settings(BaseSettings):
 
     # Integração de Frete (Melhor Envio) - https://docs.melhorenvio.com.br
     MELHOR_ENVIO_BASE_URL: str = "https://sandbox.melhorenvio.com.br"
+    # Teto total da cotação, em segundos: com o ME fora ou lento, o checkout responde 503
+    # em vez de ficar parado (#62).
+    MELHOR_ENVIO_TIMEOUT_SECONDS: float = 5.0
     MERCADO_PAGO_BASE_URL: str = "https://api.mercadopago.com"
     MERCADO_PAGO_ORDER_EXPIRATION_ENABLED: bool = True
     MERCADO_PAGO_CANCEL_RETRY_HOURS: int = 24

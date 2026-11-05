@@ -47,8 +47,8 @@ class TestShippingCalculate:
             f"{API_V1_PREFIX}/operations/shipping/calculate",
             json=make_shipping_payload(variant_id),
         )
-        # Will be 200 if MelhorEnvio is reachable, 502 if it isn't.
-        assert resp.status_code in (200, 502), resp.text
+        # Will be 200 if MelhorEnvio is reachable, 503 if it isn't.
+        assert resp.status_code in (200, 503), resp.text
         if resp.status_code == 200:
             data = resp.json()["data"]
             assert isinstance(data, list)
@@ -59,13 +59,13 @@ class TestShippingCalculate:
 
     @pytest.mark.asyncio
     async def test_calculate_shipping_unauthenticated(self, client: httpx.AsyncClient):
-        """Even unauthenticated, the endpoint should be reachable (200/502)."""
+        """Even unauthenticated, the endpoint should be reachable (200/503)."""
         variant_id = await _get_first_variant_id(client)
         resp = await client.post(
             f"{API_V1_PREFIX}/operations/shipping/calculate",
             json=make_shipping_payload(variant_id),
         )
-        assert resp.status_code in (200, 502), resp.text
+        assert resp.status_code in (200, 503), resp.text
         # NOT 401 — endpoint is public
         assert resp.status_code != 401
 
@@ -118,4 +118,4 @@ class TestShippingCalculate:
             json=make_shipping_payload(variant_id, dest_zip="INVALID"),
         )
         # Validation rejects malformed CEP at the schema layer
-        assert resp.status_code in (400, 422, 502), resp.text
+        assert resp.status_code in (400, 422, 503), resp.text

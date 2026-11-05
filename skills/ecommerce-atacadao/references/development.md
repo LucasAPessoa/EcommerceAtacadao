@@ -78,7 +78,7 @@ uv run pytest tests -q
 
 Os testes incluem unidades e cenários black-box que podem exigir servidor e banco
 reais. Descubra fixtures e marcadores antes de iniciar serviços duplicados. Uma
-falha `502` em frete pode representar indisponibilidade/credencial do Melhor
+falha `503` em frete pode representar indisponibilidade/credencial do Melhor
 Envio, não necessariamente regressão local; mantenha a asserção do contrato e
 isole a integração quando o objetivo for regra interna.
 

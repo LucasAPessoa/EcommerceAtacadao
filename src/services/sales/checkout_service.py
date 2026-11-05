@@ -338,6 +338,7 @@ class CheckoutService:
             shipping_service_id=selected_quote.service_id,
             shipping_service_name=selected_quote.service_name,
             shipping_delivery_time_days=selected_quote.delivery_time_days,
+            shipping_quote_snapshot=selected_quote.snapshot,
             reservation_expires_at=now + timedelta(minutes=settings.STOCK_RESERVATION_MINUTES),
         )
         await self.repository.clear_cart(locked_cart)
